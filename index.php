@@ -37,13 +37,23 @@ try {
             }
 
             if (!empty($apiCars) && is_array($apiCars)) {
-                $insertStmt = $pdo->prepare("INSERT INTO cars (make, model, year, vehicle_class, drive, fuel_type, city_mpg, highway_mpg) VALUES (:make, :model, :year, :vehicle_class, :drive, :fuel_type, :city_mpg, :highway_mpg)");
+                // 👇 누락되었던 transmission, cylinders, displacement, combination_mpg 전부 추가!
+                $insertStmt = $pdo->prepare("INSERT INTO cars (make, model, year, vehicle_class, drive, fuel_type, transmission, cylinders, displacement, city_mpg, highway_mpg) VALUES (:make, :model, :year, :vehicle_class, :drive, :fuel_type, :transmission, :cylinders, :displacement, :city_mpg, :highway_mpg)");
+                
                 foreach ($apiCars as $apiCar) {
                     if (is_array($apiCar) && isset($apiCar['make'])) { 
                         $insertStmt->execute([
-                            'make' => $apiCar['make'], 'model' => $apiCar['model'], 'year' => $apiCar['year'],
-                            'vehicle_class' => $apiCar['class'] ?? '', 'drive' => $apiCar['drive'] ?? '',
-                            'fuel_type' => $apiCar['fuel_type'] ?? '', 'city_mpg' => $apiCar['city_mpg'] ?? 0, 'highway_mpg' => $apiCar['highway_mpg'] ?? 0
+                            'make' => $apiCar['make'], 
+                            'model' => $apiCar['model'], 
+                            'year' => $apiCar['year'],
+                            'vehicle_class' => $apiCar['class'] ?? '', 
+                            'drive' => $apiCar['drive'] ?? '',
+                            'fuel_type' => $apiCar['fuel_type'] ?? '', 
+                            'transmission' => $apiCar['transmission'] ?? '', // 변속기 추가
+                            'cylinders' => $apiCar['cylinders'] ?? 0,        // 기통 수 추가
+                            'displacement' => $apiCar['displacement'] ?? 0,  // 배기량 추가
+                            'city_mpg' => $apiCar['city_mpg'] ?? 0, 
+                            'highway_mpg' => $apiCar['highway_mpg'] ?? 0
                         ]);
                     }
                 }
@@ -66,7 +76,7 @@ try {
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
     
     <!-- 👇 아까 <style> 태그가 있던 자리에 이 코드를 딱 한 줄 넣어줘! 👇 -->
-    <link rel="stylesheet" href="index.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="style.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -78,9 +88,9 @@ try {
 
     <!-- 네비게이션 바 -->
     <nav class="navbar">
-        <div class="logo">
+        <a href="index.php" class="logo" style="text-decoration: none; color: inherit;">
             <span class="logo-icon">🚘</span> CarDex
-        </div>
+        </a>
         <div class="nav-links">
             <a href="index.php" class="active">검색 (Search)</a>
             <a href="#">비교함 (Compare)</a>
@@ -184,15 +194,18 @@ try {
         <h2 class="search-results-title">결과: '<?= htmlspecialchars($searchTerm) ?>' (<?= count($cars) ?>건)</h2>
         <div class="car-grid">
             <?php foreach ($cars as $car): ?>
-                <div class="result-card">
-                    <div class="result-make"><?= htmlspecialchars($car['make']) ?></div>
-                    <div class="result-model"><?= htmlspecialchars($car['model']) ?> (<?= htmlspecialchars($car['year']) ?>)</div>
-                    <div class="badge-group">
-                        <span class="res-badge"><?= htmlspecialchars(strtoupper($car['drive'])) ?></span>
-                        <span class="res-badge"><?= htmlspecialchars(ucfirst($car['fuel_type'])) ?></span>
+                <!-- 👇 기존의 ?id= 부분 대신 make, model, year를 들고 넘어가도록 수정! 👇 -->
+                <a href="detail.php?make=<?= urlencode($car['make']) ?>&model=<?= urlencode($car['model']) ?>&year=<?= urlencode($car['year']) ?>" style="text-decoration: none; color: inherit;">
+                    <div class="result-card">
+                        <div class="result-make"><?= htmlspecialchars($car['make']) ?></div>
+                        <div class="result-model"><?= htmlspecialchars($car['model']) ?> (<?= htmlspecialchars($car['year']) ?>)</div>
+                        <div class="badge-group">
+                            <span class="res-badge"><?= htmlspecialchars(strtoupper($car['drive'])) ?></span>
+                            <span class="res-badge"><?= htmlspecialchars(ucfirst($car['fuel_type'])) ?></span>
+                        </div>
+                        <div style="font-size:0.9rem; color:#a0a0a0;">도심: <?= htmlspecialchars($car['city_mpg']) ?> mpg | 고속: <?= htmlspecialchars($car['highway_mpg']) ?> mpg</div>
                     </div>
-                    <div style="font-size:0.9rem; color:#a0a0a0;">도심: <?= htmlspecialchars($car['city_mpg']) ?> mpg | 고속: <?= htmlspecialchars($car['highway_mpg']) ?> mpg</div>
-                </div>
+                </a>
             <?php endforeach; ?>
         </div>
     </div>
