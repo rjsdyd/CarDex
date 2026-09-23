@@ -61,7 +61,20 @@
         .db-desc::before { content: '■'; color: var(--primary-cyan); font-size: 0.5rem; }
 
         /* 4. 제원 비교하기 카드 (Cyan) */
-        .card-compare { grid-column: 3 / 4; grid-row: 2 / 3; background-color: var(--primary-cyan); color: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; cursor: pointer; transition: 0.3s; }
+        .card-compare { 
+            grid-column: 3 / 4; 
+            grid-row: 2 / 3; 
+            background-color: var(--primary-cyan); 
+            color: #000; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            text-decoration: none; /* 👇 이 줄 하나만 추가하면 끝! */
+        }
         .card-compare:hover { transform: scale(0.98); }
         .compare-icon { font-size: 2rem; margin-bottom: 10px; }
         .card-compare h3 { margin: 0 0 5px 0; font-size: 1.3rem; font-weight: 900; }

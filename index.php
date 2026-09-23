@@ -91,10 +91,11 @@ try {
         <a href="index.php" class="logo" style="text-decoration: none; color: inherit;">
             <span class="logo-icon">🚘</span> CarDex
         </a>
-        <div class="nav-links">
+        <nav class="nav-links">
             <a href="index.php" class="active">검색 (Search)</a>
-            <a href="#">비교함 (Compare)</a>
+            <a href="compare.php">비교함 (Compare)</a>
             <a href="#">마이페이지 (My Page)</a>
+        </nav>
         </div>
         <div class="nav-icons">
             <span style="cursor:pointer;">🔔</span>
@@ -149,13 +150,12 @@ try {
             <div class="db-row-count"><?= $totalRowsFormatted ?> <span>Row</span></div>
             <div class="db-desc">API 호출 최소화 및 로딩 최적화</div>
         </div>
-
         <!-- 4. 제원 비교하기 버튼 카드 -->
-        <div class="card card-compare">
-            <div class="compare-icon">🔄</div>
+        <a href="compare.php" class="card card-compare">
+            <span class="compare-icon">🔄</span>
             <h3>제원 비교하기</h3>
             <p>선택한 차량의 스펙을<br>나란히 비교하세요</p>
-        </div>
+        </a>
 
         <!-- 5. 자주 검색하는 브랜드 -->
         <div class="card card-brands">

@@ -48,6 +48,10 @@ $hwy_kml = $hwy_mpg > 0 ? number_format($hwy_mpg * 0.425, 1) : '-';
 
 $city_percent = $city_mpg > 0 ? min(($city_mpg / 50) * 100, 100) : 0;
 $hwy_percent = $hwy_mpg > 0 ? min(($hwy_mpg / 50) * 100, 100) : 0;
+// 5. 현재 이 자동차가 내 차고(wishlist)에 있는지 확인
+$wishStmt = $pdo->prepare("SELECT * FROM wishlist WHERE car_id = :car_id");
+$wishStmt->execute(['car_id' => $car['car_id']]);
+$isWished = $wishStmt->fetch(); // 데이터가 있으면 true(배열), 없으면 false
 ?>
 
 <!DOCTYPE html>
@@ -93,7 +97,10 @@ $hwy_percent = $hwy_mpg > 0 ? min(($hwy_mpg / 50) * 100, 100) : 0;
                 
                 <div class="action-area">
                     <button class="btn btn-outline">⚖️ 비교함 담기</button>
-                    <button class="btn btn-primary">🤍 차고에 저장</button>
+                    <button class="btn btn-primary" id="wishBtn" onclick="toggleWish(<?= $car['car_id'] ?>)"
+                            style="<?= $isWished ? 'background: #ff4b4b; color: #fff;' : '' ?>">
+                        <?= $isWished ? '❤️ 차고에 저장됨' : '🤍 차고에 저장' ?>
+                    </button>
                 </div>
             </div>
         </div>
@@ -200,5 +207,34 @@ $hwy_percent = $hwy_mpg > 0 ? min(($hwy_mpg / 50) * 100, 100) : 0;
         </div>
     </div>
 
+    <script>
+        function toggleWish(carId) {
+            const btn = document.getElementById('wishBtn');
+            
+            // 찜하기 백엔드 파일로 몰래 데이터 쏘기
+            fetch('toggle_wishlist.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ car_id: carId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    if(data.action === 'added') {
+                        btn.innerHTML = '❤️ 차고에 저장됨';
+                        btn.style.background = '#ff4b4b'; // 빨간색으로 변경
+                        btn.style.color = '#fff';
+                    } else {
+                        btn.innerHTML = '🤍 차고에 저장';
+                        btn.style.background = 'var(--primary-cyan)'; // 원래 민트색으로
+                        btn.style.color = '#000';
+                    }
+                } else {
+                    alert('오류가 발생했습니다: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
 </body>
 </html>
