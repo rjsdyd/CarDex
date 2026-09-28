@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once 'db.php';
 
 $searchTerm = $_GET['q'] ?? '';
@@ -99,7 +100,17 @@ try {
         </div>
         <div class="nav-icons">
             <span style="cursor:pointer;">🔔</span>
-            <div class="user-avatar">U</div>
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <!-- 로그인 상태 -->
+                <div class="user-avatar" style="width: auto; padding: 0 15px; border-radius: 20px;">
+                    <?= htmlspecialchars($_SESSION['username']) ?>
+                </div>
+                <a href="logout.php" style="font-size: 0.8rem; margin-left: 10px; color: #a0a0a0; text-decoration: none; font-weight: bold;">로그아웃</a>
+            <?php else: ?>
+                <!-- 로그아웃 상태 (여기를 수정!) -->
+                <div class="user-avatar">U</div>
+                <a href="login.php" style="font-size: 0.8rem; margin-left: 10px; color: var(--primary-cyan, #00e5ff); text-decoration: none; font-weight: bold;">로그인</a>
+            <?php endif; ?>
         </div>
     </nav>
 

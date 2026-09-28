@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once 'db.php';
 
 // 1. URL에서 브랜드, 모델명, 연식을 받아옴
@@ -48,10 +49,13 @@ $hwy_kml = $hwy_mpg > 0 ? number_format($hwy_mpg * 0.425, 1) : '-';
 
 $city_percent = $city_mpg > 0 ? min(($city_mpg / 50) * 100, 100) : 0;
 $hwy_percent = $hwy_mpg > 0 ? min(($hwy_mpg / 50) * 100, 100) : 0;
-// 5. 현재 이 자동차가 내 차고(wishlist)에 있는지 확인
-$wishStmt = $pdo->prepare("SELECT * FROM wishlist WHERE car_id = :car_id");
-$wishStmt->execute(['car_id' => $car['car_id']]);
-$isWished = $wishStmt->fetch(); // 데이터가 있으면 true(배열), 없으면 false
+// 👇 5. 현재 이 자동차가 내 차고에 있는지 확인 (로그인했을 때만!)
+$isWished = false;
+if (isset($_SESSION['user_id'])) {
+    $wishStmt = $pdo->prepare("SELECT * FROM wishlist WHERE user_id = :user_id AND car_id = :car_id");
+    $wishStmt->execute(['user_id' => $_SESSION['user_id'], 'car_id' => $car['car_id']]);
+    $isWished = $wishStmt->fetch(); 
+}
 ?>
 
 <!DOCTYPE html>
@@ -219,6 +223,11 @@ $isWished = $wishStmt->fetch(); // 데이터가 있으면 true(배열), 없으�
             })
             .then(response => response.json())
             .then(data => {
+                if(data.status === 'error' && data.redirect) {
+                    alert(data.message);
+                    window.location.href = data.redirect;
+                    return;
+                }
                 if(data.status === 'success') {
                     if(data.action === 'added') {
                         btn.innerHTML = '❤️ 차고에 저장됨';
