@@ -118,22 +118,7 @@ $car2 = getCarData($pdo, $search2, $apiKey);
 </head>
 <body>
 
-<header>
-    <a href="index.php" class="logo">🚘 CarDex</a>
-    <nav class="nav-links">
-        <a href="index.php">검색 (Search)</a>
-        <a href="compare.php" class="active">비교함 (Compare)</a>
-    </nav>
-    <div class="nav-icons">
-        <?php if (isset($_SESSION['user_id'])): ?>
-            <div class="user-avatar"><?= htmlspecialchars($_SESSION['username']) ?></div>
-            <a href="logout.php" style="font-size: 0.8rem; color: #a0a0a0; font-weight: bold;">로그아웃</a>
-        <?php else: ?>
-            <div class="user-avatar" style="padding: 5px 10px; border-radius: 50%;">U</div>
-            <a href="login.php" style="font-size: 0.8rem; color: #00e5ff; font-weight: bold;">로그인</a>
-        <?php endif; ?>
-    </div>
-</header>
+<?php include 'header.php'; ?>
 
 <div class="container">
     <div class="page-title">

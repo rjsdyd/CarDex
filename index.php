@@ -66,6 +66,22 @@ try {
 } catch (\PDOException $e) {
     die("데이터베이스 에러: " . $e->getMessage());
 }
+// 👇 메인 화면 인기 차량 1대 불러오기 (가장 최근에 추가된 차)
+$popStmt = $pdo->query("SELECT * FROM cars ORDER BY created_at DESC LIMIT 1");
+$popularCar = $popStmt->fetch();
+
+// 내가 이 인기 차량을 찜했는지 확인
+$isPopWished = false;
+// ... (인기 차량 $popularCar 불러오는 코드 아래) ...
+if ($popularCar && isset($_SESSION['user_id'])) {
+    $checkWish = $pdo->prepare("SELECT 1 FROM wishlist WHERE user_id = ? AND car_id = ?");
+    $checkWish->execute([$_SESSION['user_id'], $popularCar['car_id']]);
+    $isPopWished = (bool)$checkWish->fetch();
+}
+
+// 👇 메인 화면 자주 검색하는 브랜드 TOP 4 불러오기
+$brandStmt = $pdo->query("SELECT make, COUNT(*) as cnt FROM cars GROUP BY make ORDER BY cnt DESC LIMIT 4");
+$popularBrands = $brandStmt->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -88,31 +104,7 @@ try {
     </div>
 
     <!-- 네비게이션 바 -->
-    <nav class="navbar">
-        <a href="index.php" class="logo" style="text-decoration: none; color: inherit;">
-            <span class="logo-icon">🚘</span> CarDex
-        </a>
-        <nav class="nav-links">
-            <a href="index.php" class="active">검색 (Search)</a>
-            <a href="compare.php">비교함 (Compare)</a>
-            <a href="#">마이페이지 (My Page)</a>
-        </nav>
-        </div>
-        <div class="nav-icons">
-            <span style="cursor:pointer;">🔔</span>
-            <?php if (isset($_SESSION['user_id'])): ?>
-                <!-- 로그인 상태 -->
-                <div class="user-avatar" style="width: auto; padding: 0 15px; border-radius: 20px;">
-                    <?= htmlspecialchars($_SESSION['username']) ?>
-                </div>
-                <a href="logout.php" style="font-size: 0.8rem; margin-left: 10px; color: #a0a0a0; text-decoration: none; font-weight: bold;">로그아웃</a>
-            <?php else: ?>
-                <!-- 로그아웃 상태 (여기를 수정!) -->
-                <div class="user-avatar">U</div>
-                <a href="login.php" style="font-size: 0.8rem; margin-left: 10px; color: var(--primary-cyan, #00e5ff); text-decoration: none; font-weight: bold;">로그인</a>
-            <?php endif; ?>
-        </div>
-    </nav>
+    <?php include 'header.php'; ?>
 
     <!-- 대시보드 (벤토 박스 레이아웃) -->
     <div class="dashboard-container">
@@ -130,26 +122,39 @@ try {
             </form>
         </div>
 
-        <!-- 2. 인기 차종 카드 -->
+        <!-- 2. 인기 차종 카드 (동적 연동 완료) -->
         <div class="card card-popular">
-            <div class="heart-icon" onclick="this.style.color='#ff4b4b'">🤍</div>
-            <h3>인기 검색 차량</h3>
-            <h2>Model 3</h2>
-            <div class="brand">Tesla</div>
-            
-            <!-- 배경 자동차 실루엣 느낌을 위한 데코 -->
-            <div style="position: absolute; right: -20px; bottom: 80px; font-size: 8rem; opacity: 0.05; transform: rotate(-15deg);">🚗</div>
+            <?php if ($popularCar): ?>
+                <!-- 찜하기 하트 버튼 -->
+                <div class="heart-icon" 
+                    id="main-heart"
+                    style="color: <?= $isPopWished ? '#ff4b4b' : '#fff' ?>; cursor: pointer; position: absolute; right: 20px; top: 20px; font-size: 1.5rem; transition: 0.2s; z-index: 10;" 
+                    onclick="toggleMainWish(<?= $popularCar['car_id'] ?>)">
+                    <?= $isPopWished ? '❤️' : '🤍' ?>
+                </div>
+                
+                <h3>최근 인기 검색 차량</h3>
+                <h2><?= htmlspecialchars(ucwords($popularCar['model'])) ?></h2>
+                <div class="brand" style="color: #00e5ff; font-weight: bold; margin-bottom: 20px;">
+                    <?= htmlspecialchars(strtoupper($popularCar['make'])) ?>
+                </div>
+                
+                <div style="position: absolute; right: -20px; bottom: 80px; font-size: 8rem; opacity: 0.05; transform: rotate(-15deg); pointer-events: none;">🚗</div>
 
-            <div class="popular-specs">
-                <div class="spec-box">
-                    FUEL TYPE
-                    <strong>Electricity</strong>
+                <div class="popular-specs" style="display: flex; gap: 10px; margin-top: auto;">
+                    <div class="spec-box" style="background: #121212; padding: 10px 15px; border-radius: 8px; flex: 1;">
+                        <span style="font-size: 0.75rem; color: #888; display: block;">FUEL TYPE</span>
+                        <strong><?= htmlspecialchars(ucfirst($popularCar['fuel_type'] ?: 'Unknown')) ?></strong>
+                    </div>
+                    <div class="spec-box" style="background: #121212; padding: 10px 15px; border-radius: 8px; flex: 1;">
+                        <span style="font-size: 0.75rem; color: #888; display: block;">DRIVE</span>
+                        <strong><?= htmlspecialchars(strtoupper($popularCar['drive'] ?: 'Unknown')) ?></strong>
+                    </div>
                 </div>
-                <div class="spec-box">
-                    DRIVE
-                    <strong>AWD</strong>
-                </div>
-            </div>
+            <?php else: ?>
+                <h3>데이터 없음</h3>
+                <p>검색을 시작해보세요!</p>
+            <?php endif; ?>
         </div>
 
         <!-- 3. 로컬 DB 상태 카드 -->
@@ -168,36 +173,64 @@ try {
             <p>선택한 차량의 스펙을<br>나란히 비교하세요</p>
         </a>
 
-        <!-- 5. 자주 검색하는 브랜드 -->
-        <div class="card card-brands">
-            <div class="brands-header">
-                <h3>자주 검색하는 브랜드</h3>
-                <a href="#">더보기 →</a>
+        <div class="card" style="background: #1e1e24; border-radius: 16px; padding: 25px 30px; height: auto !important; min-height: 190px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                <h3 style="color: #a0a0a0; font-size: 0.95rem; font-weight: 600; margin: 0;">자주 검색하는 브랜드</h3>
+                <a href="javascript:void(0)" onclick="alert('전체 브랜드 목록 페이지는 업데이트 예정입니다! 🚗\n상단의 검색 기능을 이용해 주세요.')" style="color: #00e5ff; font-size: 0.85rem; font-weight: bold; text-decoration: none;">더보기 →</a>
             </div>
-            <div class="brand-list">
-                <div class="brand-item">
-                    <div class="brand-circle">H</div>
-                    <span>현대</span>
-                </div>
-                <div class="brand-item">
-                    <div class="brand-circle">K</div>
-                    <span>기아</span>
-                </div>
-                <div class="brand-item">
-                    <div class="brand-circle">⚡</div>
-                    <span>테슬라</span>
-                </div>
-                <div class="brand-item">
-                    <div class="brand-circle">B</div>
-                    <span>BMW</span>
-                </div>
-                <div class="brand-item">
-                    <div class="brand-circle" style="background:#333;">🚗</div>
-                    <span>전체보기</span>
+            
+            <div style="display: flex; gap: 25px; align-items: center;">
+                <?php 
+                // 원본 디자인 감성을 살리기 위한 커스텀 아이콘 & 한글 이름 매핑
+                $brandMap = [
+                    'hyundai' => ['icon' => 'H', 'name' => '현대'],
+                    'kia'     => ['icon' => 'K', 'name' => '기아'],
+                    'tesla'   => ['icon' => '⚡', 'name' => '테슬라'],
+                    'bmw'     => ['icon' => 'B', 'name' => 'BMW'],
+                    'genesis' => ['icon' => 'G', 'name' => '제네시스'],
+                    'toyota'  => ['icon' => 'T', 'name' => '토요타'],
+                    'honda'   => ['icon' => 'H', 'name' => '혼다'] // 혼다 추가!
+                ];
+
+                if (!empty($popularBrands)): 
+                    foreach ($popularBrands as $b): 
+                        $rawMake = strtolower($b['make']);
+                        // 매핑된 브랜드면 커스텀 디자인 적용, 아니면 이니셜 자동 추출
+                        if (isset($brandMap[$rawMake])) {
+                            $displayIcon = $brandMap[$rawMake]['icon'];
+                            $displayName = $brandMap[$rawMake]['name'];
+                        } else {
+                            $displayIcon = strtoupper(substr($b['make'], 0, 1));
+                            $displayName = htmlspecialchars(ucfirst($b['make']));
+                        }
+                ?>
+                    <!-- 개별 브랜드 (클릭 시 비교함 이동) -->
+                    <div onclick="location.href='compare.php?search1=<?= urlencode($b['make']) ?>'" 
+                         style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px; transition: 0.2s;"
+                         onmouseover="this.style.transform='translateY(-3px)'" 
+                         onmouseout="this.style.transform='translateY(0)'">
+                        <div style="width: 60px; height: 60px; background: #121212; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.3rem; font-weight: 800; color: #fff;">
+                            <?= $displayIcon ?>
+                        </div>
+                        <span style="font-size: 0.85rem; color: #a0a0a0; font-weight: 500;"><?= $displayName ?></span>
+                    </div>
+                <?php 
+                    endforeach; 
+                endif; 
+                ?>
+                
+                <!-- 변경된 전체보기 아이콘 -->
+                <div onclick="alert('전체 브랜드 목록 페이지는 업데이트 예정입니다! 🚗\n상단의 검색 기능을 이용해 주세요.')" 
+                    style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-left: 5px; transition: 0.2s;"
+                    onmouseover="this.style.transform='translateY(-3px)'" 
+                    onmouseout="this.style.transform='translateY(0)'">
+                    <div style="width: 60px; height: 60px; background: #2a2a30; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.3rem;">
+                        🚗
+                    </div>
+                    <span style="font-size: 0.85rem; color: #a0a0a0; font-weight: 500;">전체보기</span>
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- 검색 결과가 있을 때만 아래에 그리드로 보여주기 -->
     <?php if ($searchTerm && !empty($cars)): ?>
@@ -223,6 +256,32 @@ try {
     <?php elseif ($searchTerm && empty($cars)): ?>
         <!-- 결과 없을 때 방어 코드 -->
     <?php endif; ?>
-
+    <script>
+        function toggleMainWish(carId) {
+            fetch('toggle_wishlist.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ car_id: carId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'error' && data.redirect) {
+                    alert(data.message);
+                    window.location.href = data.redirect;
+                    return;
+                }
+                if(data.status === 'success') {
+                    const heart = document.getElementById('main-heart');
+                    if(data.action === 'added') {
+                        heart.innerHTML = '❤️';
+                        heart.style.color = '#ff4b4b';
+                    } else {
+                        heart.innerHTML = '🤍';
+                        heart.style.color = '#fff';
+                    }
+                }
+            });
+        }
+    </script>
 </body>
 </html>
