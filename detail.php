@@ -69,20 +69,7 @@ if (isset($_SESSION['user_id'])) {
 </head>
 <body>
 
-    <nav class="navbar">
-        <a href="index.php" class="logo" style="text-decoration: none; color: inherit;">
-            <span class="logo-icon">🚘</span> CarDex
-        </a>
-        <div class="nav-links">
-            <a href="index.php">검색 (Search)</a>
-            <a href="#">비교함 (Compare)</a>
-            <a href="#">마이페이지 (My Page)</a>
-        </div>
-        <div class="nav-icons">
-            <span style="cursor:pointer;">🔔</span>
-            <div class="user-avatar">U</div>
-        </div>
-    </nav>
+    <?php include 'header.php'; ?>
 
     <div class="detail-container">
         

@@ -51,6 +51,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <a href="index.php" class="logo">🚘 CarDex</a>
     <nav class="nav-links">
         <a href="index.php" class="<?= $current_page == 'index.php' ? 'active' : '' ?>">검색 (Search)</a>
+        <a href="category.php" class="<?= $current_page == 'category.php' ? 'active' : '' ?>">카테고리 (Category)</a>
         <a href="compare.php" class="<?= $current_page == 'compare.php' ? 'active' : '' ?>">비교함 (Compare)</a>
         <a href="mypage.php" class="<?= $current_page == 'mypage.php' ? 'active' : '' ?>">마이페이지 (My Page)</a>
     </nav>
