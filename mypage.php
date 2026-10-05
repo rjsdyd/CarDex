@@ -2,109 +2,140 @@
 session_start();
 require_once 'db.php';
 
-// 로그인 안 한 유저는 로그인 페이지로 튕겨내기!
+// 1. 로그인 체크
 if (!isset($_SESSION['user_id'])) {
-    echo "<script>alert('로그인이 필요한 페이지입니다.'); window.location.href='login.php';</script>";
-    exit;
+    die("<script>alert('로그인이 필요한 서비스입니다.'); location.href='login.php';</script>");
+}
+$userId = $_SESSION['user_id'];
+
+// 2. 삭제 처리 로직 (선택 삭제 & 개별 삭제)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // 다중(선택) 삭제
+    if (isset($_POST['action']) && $_POST['action'] === 'bulk_delete' && !empty($_POST['car_ids'])) {
+        $carIds = $_POST['car_ids'];
+        $placeholders = implode(',', array_fill(0, count($carIds), '?'));
+        $params = array_merge([$userId], $carIds);
+        
+        $delStmt = $pdo->prepare("DELETE FROM wishlist WHERE user_id = ? AND car_id IN ($placeholders)");
+        $delStmt->execute($params);
+        
+        echo "<script>location.replace('mypage.php');</script>";
+        exit;
+    }
+    // 단일(개별) 삭제
+    if (isset($_POST['action']) && $_POST['action'] === 'single_delete' && !empty($_POST['car_id'])) {
+        $delStmt = $pdo->prepare("DELETE FROM wishlist WHERE user_id = ? AND car_id = ?");
+        $delStmt->execute([$userId, $_POST['car_id']]);
+        
+        echo "<script>location.replace('mypage.php');</script>";
+        exit;
+    }
 }
 
-// 1. 내 찜 목록 가져오기 (JOIN을 써서 wishlist와 cars 테이블 합치기)
-$stmt = $pdo->prepare("
-    SELECT c.*, w.created_at as saved_at 
-    FROM wishlist w 
-    JOIN cars c ON w.car_id = c.car_id 
-    WHERE w.user_id = :user_id 
-    ORDER BY w.created_at DESC
-");
-$stmt->execute(['user_id' => $_SESSION['user_id']]);
-$myCars = $stmt->fetchAll();
+// 3. 내 차고 통계 데이터 가져오기
+$stats = [
+    'total' => 0,
+    'top_brand' => '-',
+    'top_fuel' => '-',
+    'top_fuel_percent' => 0
+];
 
-// 2. 통계 계산 로직 (가장 선호하는 브랜드, 연료 타입 추출)
-$totalSaved = count($myCars);
-$brandCounts = [];
-$fuelCounts = [];
+// 총 저장 대수
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM wishlist WHERE user_id = ?");
+$countStmt->execute([$userId]);
+$stats['total'] = $countStmt->fetchColumn();
 
-foreach ($myCars as $car) {
-    $make = $car['make'] ?: 'Unknown';
-    $fuel = $car['fuel_type'] ?: 'Unknown';
-    
-    $brandCounts[$make] = ($brandCounts[$make] ?? 0) + 1;
-    $fuelCounts[$fuel] = ($fuelCounts[$fuel] ?? 0) + 1;
+if ($stats['total'] > 0) {
+    // 가장 선호하는 브랜드
+    $brandStmt = $pdo->prepare("SELECT c.make, COUNT(*) as cnt FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? GROUP BY c.make ORDER BY cnt DESC LIMIT 1");
+    $brandStmt->execute([$userId]);
+    $brandRes = $brandStmt->fetch();
+    if ($brandRes) $stats['top_brand'] = ucfirst($brandRes['make']);
+
+    // 관심 연료 타입
+    $fuelStmt = $pdo->prepare("SELECT c.fuel_type, COUNT(*) as cnt FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? GROUP BY c.fuel_type ORDER BY cnt DESC LIMIT 1");
+    $fuelStmt->execute([$userId]);
+    $fuelRes = $fuelStmt->fetch();
+    if ($fuelRes) {
+        $stats['top_fuel'] = ucfirst($fuelRes['fuel_type'] ?: 'Unknown');
+        $stats['top_fuel_percent'] = round(($fuelRes['cnt'] / $stats['total']) * 100);
+    }
 }
 
-// 배열을 내림차순(가장 많은 것부터) 정렬
-arsort($brandCounts);
-arsort($fuelCounts);
+// 👇 4. 정렬 방식 파라미터 받기 및 SQL 조건 동적 변경
+$currentSort = $_GET['sort'] ?? 'recent';
 
-$topBrand = $totalSaved > 0 ? array_key_first($brandCounts) : '-';
-$topFuel = $totalSaved > 0 ? array_key_first($fuelCounts) : '-';
-$topFuelPercent = $totalSaved > 0 ? round(($fuelCounts[$topFuel] / $totalSaved) * 100) : 0;
+$orderBySql = "ORDER BY w.created_at DESC"; // 기본값: 최근 저장순
+if ($currentSort === 'newest') {
+    $orderBySql = "ORDER BY c.year DESC, w.created_at DESC"; // 최신 연식순
+}
+
+// 저장된 차량 목록 가져오기 (적용된 정렬 기준 사용)
+$listStmt = $pdo->prepare("SELECT c.*, w.created_at as saved_at FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? $orderBySql");
+$listStmt->execute([$userId]);
+$savedCars = $listStmt->fetchAll();
+
 ?>
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <title>CarDex - 마이페이지</title>
-    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
-        body { background-color: #121212; color: #fff; line-height: 1.6; }
+        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; }
         a { text-decoration: none; color: inherit; }
-        
-        /* 공통 헤더 */
-        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background-color: #1a1a1a; border-bottom: 1px solid #333; }
-        .logo { font-size: 1.5rem; font-weight: 800; color: #fff; }
-        .nav-links { display: flex; gap: 20px; font-weight: 600; font-size: 0.95rem; }
-        .nav-links a { color: #888; transition: 0.3s; }
-        .nav-links a.active, .nav-links a:hover { color: #fff; }
-        
-        .nav-icons { display: flex; align-items: center; gap: 15px; }
-        .user-avatar { background: #00e5ff; color: #000; font-weight: bold; border-radius: 20px; padding: 5px 15px; font-size: 0.9rem; }
-
         .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
-        
-        .page-title { margin-bottom: 30px; }
-        .page-title h1 { font-size: 2rem; font-weight: 800; display: flex; align-items: center; gap: 10px; }
-        .page-title p { color: #a0a0a0; font-size: 0.95rem; margin-top: 5px; }
 
-        /* 대시보드 통계 카드 */
+        .page-title { margin-bottom: 40px; }
+        .page-title h1 { font-size: 2rem; font-weight: 800; margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px; }
+        .page-title p { color: #a0a0a0; margin: 0; font-size: 0.95rem; }
+
+        /* 통계 위젯 영역 */
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }
-        .stat-card { background: #1e1e24; border-radius: 12px; padding: 25px; border: 1px solid #2a2a2f; }
-        .stat-card small { display: block; color: #a0a0a0; font-size: 0.85rem; margin-bottom: 8px; font-weight: 600; }
-        .stat-card strong { font-size: 1.8rem; font-weight: 800; color: #fff; text-transform: capitalize; }
-        .text-cyan { color: #00e5ff !important; }
+        .stat-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 12px; padding: 25px; display: flex; flex-direction: column; justify-content: center; }
+        .stat-card span { font-size: 0.8rem; color: #888; margin-bottom: 10px; }
+        .stat-card strong { font-size: 1.8rem; font-weight: 800; }
+        .stat-card strong.cyan { color: #00e5ff; }
+        .stat-card small { font-size: 1rem; color: #666; font-weight: normal; margin-left: 5px; }
         
-        .stat-card.action-card { background: rgba(0, 229, 255, 0.05); border-color: rgba(0, 229, 255, 0.2); cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-        .stat-card.action-card:hover { background: rgba(0, 229, 255, 0.1); transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,229,255,0.1); }
+        .link-card { background: rgba(0, 229, 255, 0.05); border: 1px solid rgba(0, 229, 255, 0.2); cursor: pointer; transition: 0.2s; align-items: center; text-align: center; }
+        .link-card:hover { background: rgba(0, 229, 255, 0.1); transform: translateY(-3px); }
+        .link-card strong { font-size: 1.2rem; color: #00e5ff; }
 
-        /* 컨트롤 영역 */
-        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
-        .controls label { display: flex; align-items: center; gap: 8px; color: #a0a0a0; cursor: pointer; }
-        .controls select { background: #1e1e24; color: #fff; border: 1px solid #333; padding: 8px 15px; border-radius: 8px; outline: none; font-family: inherit; }
-
-        /* 내 차고(Bento) 그리드 */
-        .garage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
-        .car-card { background: #1e1e24; border-radius: 16px; border: 1px solid #2a2a2f; padding: 20px; display: flex; flex-direction: column; position: relative; transition: 0.2s; }
-        .car-card:hover { border-color: #555; transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        /* 컨트롤 툴바 */
+        .toolbar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 25px; }
+        .toolbar-left { display: flex; align-items: center; gap: 15px; }
+        .checkbox-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #ccc; cursor: pointer; }
+        .checkbox-wrap input { width: 16px; height: 16px; cursor: pointer; accent-color: #00e5ff; }
         
-        .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
-        .card-top input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: #00e5ff; }
-        .btn-delete { background: none; border: none; color: #666; cursor: pointer; font-size: 1.2rem; transition: 0.2s; }
-        .btn-delete:hover { color: #ff4b4b; }
+        .btn-delete-selected { background: #ff4b4b; color: #fff; border: none; padding: 6px 15px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; cursor: pointer; display: none; transition: 0.2s; }
+        .btn-delete-selected:hover { background: #ff3333; }
 
-        .car-icon-wrap { text-align: center; margin-bottom: 20px; }
-        .car-icon { width: 80px; height: 80px; background: #121212; border-radius: 50%; display: inline-flex; justify-content: center; align-items: center; font-size: 2rem; border: 2px solid #2a2a2f; margin: 0 auto; }
+        .sort-select { background: #1e1e24; color: #fff; border: 1px solid #333; padding: 6px 12px; border-radius: 6px; outline: none; cursor: pointer; font-size: 0.85rem; }
+
+        /* 차량 카드 그리드 */
+        .car-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 60px; }
+        .car-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 25px; position: relative; transition: 0.2s; text-align: center; display: flex; flex-direction: column; }
+        .car-card:hover { border-color: #555; }
         
-        .car-info { text-align: center; margin-bottom: 20px; flex-grow: 1; }
-        .car-year { font-size: 0.8rem; background: #333; padding: 2px 8px; border-radius: 4px; color: #ccc; display: inline-block; margin-bottom: 5px; }
-        .car-brand { font-size: 0.85rem; color: #00e5ff; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
-        .car-model { font-size: 1.4rem; font-weight: 800; text-transform: capitalize; }
+        .card-top { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .card-top input { width: 16px; height: 16px; cursor: pointer; accent-color: #00e5ff; }
+        .btn-trash { background: none; border: none; color: #666; cursor: pointer; font-size: 1.1rem; transition: 0.2s; padding: 0; }
+        .btn-trash:hover { color: #ff4b4b; }
 
-        .car-badges { display: flex; justify-content: center; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; }
-        .badge { background: #121212; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; color: #a0a0a0; border: 1px solid #333; text-transform: capitalize; }
-        .badge.electric { border-color: rgba(0, 229, 255, 0.4); color: #00e5ff; }
-
-        .memo-area { border-top: 1px solid #2a2a2f; padding-top: 15px; font-size: 0.85rem; color: #888; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: capitalize; }
+        .car-icon-circle { width: 60px; height: 60px; background: #121212; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin: 0 auto 15px auto; border: 1px solid #333; font-size: 1.5rem; }
+        
+        .c-year { font-size: 0.75rem; background: rgba(255,255,255,0.05); padding: 3px 8px; border-radius: 10px; color: #ccc; display: inline-block; margin-bottom: 10px; border: 1px solid #333; }
+        .c-brand { font-size: 0.85rem; color: #00e5ff; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; }
+        .c-model { font-size: 1.4rem; font-weight: 800; margin-bottom: 20px; text-transform: capitalize; }
+        
+        .tags { display: flex; justify-content: center; gap: 8px; margin-bottom: 25px; }
+        .tag { background: #121212; border: 1px solid #333; padding: 5px 12px; border-radius: 12px; font-size: 0.75rem; color: #888; text-transform: capitalize; }
+        
+        .c-class { font-size: 0.8rem; color: #666; margin-top: auto; border-top: 1px solid #333; padding-top: 15px; }
+        .c-class span { color: #dda0dd; margin-right: 5px; }
+        
+        .empty-state { grid-column: 1/-1; text-align: center; padding: 80px 20px; background: #1e1e24; border-radius: 16px; border: 1px dashed #333; color: #888; }
     </style>
 </head>
 <body>
@@ -117,133 +148,134 @@ $topFuelPercent = $totalSaved > 0 ? round(($fuelCounts[$topFuel] / $totalSaved) 
         <p>관심 있는 차량을 모아보고, 통계를 확인하세요.</p>
     </div>
 
-    <!-- 대시보드 통계 영역 -->
+    <!-- 통계 위젯 -->
     <div class="stats-grid">
         <div class="stat-card">
-            <small>저장된 차량</small>
-            <strong><?= $totalSaved ?> 대</strong>
+            <span>저장된 차량</span>
+            <strong><?= $stats['total'] ?> 대</strong>
         </div>
         <div class="stat-card">
-            <small>가장 선호하는 브랜드</small>
-            <strong class="text-cyan"><?= htmlspecialchars($topBrand) ?></strong>
+            <span>가장 선호하는 브랜드</span>
+            <strong class="cyan"><?= htmlspecialchars($stats['top_brand']) ?></strong>
         </div>
         <div class="stat-card">
-            <small>관심 연료 타입</small>
-            <strong><?= htmlspecialchars($topFuel) ?> <span style="font-size:1rem; color:#888;">(<?= $topFuelPercent ?>%)</span></strong>
+            <span>관심 연료 타입</span>
+            <strong><?= htmlspecialchars($stats['top_fuel']) ?> <?= $stats['total'] > 0 ? "<small>({$stats['top_fuel_percent']}%)</small>" : '' ?></strong>
         </div>
-        <div class="stat-card action-card" onclick="goToCompare()">
-            <strong class="text-cyan" style="font-size: 1.3rem;">비교함으로 이동 🔄</strong>
-        </div>
+        <a href="compare.php" class="stat-card link-card">
+            <strong>비교함으로 이동 🔄</strong>
+        </a>
     </div>
 
-    <!-- 리스트 컨트롤 영역 -->
-    <div class="controls">
-        <!-- 👇 여기 input 태그에 id="selectAll" 을 추가했어! -->
-        <label><input type="checkbox" id="selectAll"> 전체 선택</label>
-        <select>
-            <option>최근 저장순</option>
-            <option>브랜드순</option>
-            <option>연식순</option>
-        </select>
-    </div>
+    <!-- 폼 시작 -->
+    <form id="garageForm" method="POST" action="mypage.php">
+        <input type="hidden" name="action" id="formAction" value="">
+        <input type="hidden" name="car_id" id="singleDeleteId" value="">
 
-    <!-- 내 차고 차량 리스트 -->
-    <div class="garage-grid">
-        <?php if ($totalSaved > 0): ?>
-            <?php foreach ($myCars as $car): ?>
-                <!-- 삭제 시 화면에서 지우기 위해 ID 부여 -->
-                <div class="car-card" id="card-<?= $car['car_id'] ?>">
-                    <div class="card-top">
-                        <input type="checkbox" name="compare_select" value="<?= $car['car_id'] ?>" data-search="<?= htmlspecialchars($car['model']) ?>">
-                        <!-- 휴지통 버튼 -->
-                        <button class="btn-delete" onclick="removeWish(<?= $car['car_id'] ?>)" title="차고에서 삭제">🗑️</button>
-                    </div>
-                    
-                    <div class="car-icon-wrap">
-                        <div class="car-icon">
-                            <?= strtolower($car['fuel_type']) === 'electricity' ? '⚡' : '🚗' ?>
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <label class="checkbox-wrap">
+                    <input type="checkbox" id="checkAll"> 전체 선택
+                </label>
+                <button type="button" id="btnDeleteSelected" class="btn-delete-selected" onclick="submitBulkDelete()">선택 삭제</button>
+            </div>
+            
+            <!-- 👇 정렬 기능 추가 (자바스크립트로 URL 즉시 변경) -->
+            <select class="sort-select" onchange="const urlParams = new URLSearchParams(window.location.search); urlParams.set('sort', this.value); window.location.search = urlParams.toString();">
+                <option value="recent" <?= $currentSort === 'recent' ? 'selected' : '' ?>>최근 저장순</option>
+                <option value="newest" <?= $currentSort === 'newest' ? 'selected' : '' ?>>최신 연식순</option>
+            </select>
+        </div>
+
+        <div class="car-grid">
+            <?php if (!empty($savedCars)): ?>
+                <?php foreach ($savedCars as $car): 
+                    $cid = $car['car_id'];
+                    $isEv = (strtolower($car['fuel_type']) === 'electricity' || strpos(strtolower($car['fuel_type']), 'electric') !== false);
+                ?>
+                    <div class="car-card">
+                        <div class="card-top">
+                            <input type="checkbox" name="car_ids[]" value="<?= $cid ?>" class="car-checkbox">
+                            <button type="button" class="btn-trash" onclick="submitSingleDelete(<?= $cid ?>)">🗑️</button>
+                        </div>
+                        
+                        <div class="car-icon-circle">
+                            <?= $isEv ? '⚡' : '🚙' ?>
+                        </div>
+                        
+                        <div>
+                            <div class="c-year"><?= htmlspecialchars($car['year']) ?></div>
+                            <div class="c-brand"><?= htmlspecialchars($car['make']) ?></div>
+                            <div class="c-model">
+                                <a href="detail.php?make=<?= urlencode($car['make']) ?>&model=<?= urlencode($car['model']) ?>&year=<?= urlencode($car['year']) ?>">
+                                    <?= htmlspecialchars($car['model']) ?>
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <div class="tags">
+                            <div class="tag"><?= htmlspecialchars($car['fuel_type'] ?: 'N/A') ?></div>
+                            <div class="tag"><?= htmlspecialchars($car['combination_mpg'] ?: '0') ?> Mpg</div>
+                            <div class="tag"><?= htmlspecialchars(strtoupper($car['drive'] ?: 'N/A')) ?></div>
+                        </div>
+                        
+                        <div class="c-class">
+                            <span>🏷️</span> <?= htmlspecialchars($car['vehicle_class'] ?: 'Unknown Class') ?>
                         </div>
                     </div>
-
-                    <div class="car-info">
-                        <div class="car-year"><?= htmlspecialchars($car['year']) ?></div>
-                        <div class="car-brand"><?= htmlspecialchars($car['make']) ?></div>
-                        <div class="car-model"><?= htmlspecialchars($car['model']) ?></div>
-                    </div>
-
-                    <div class="car-badges">
-                        <span class="badge <?= strtolower($car['fuel_type']) === 'electricity' ? 'electric' : '' ?>">
-                            <?= htmlspecialchars($car['fuel_type']) ?>
-                        </span>
-                        <span class="badge"><?= htmlspecialchars($car['city_mpg']) ?> mpg</span>
-                        <span class="badge"><?= htmlspecialchars(strtoupper($car['drive'])) ?></span>
-                    </div>
-
-                    <div class="memo-area">
-                        <span>🏷️</span> <?= htmlspecialchars($car['vehicle_class'] ?: 'Standard') ?> Class
-                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="empty-state">
+                    <div style="font-size: 3rem; margin-bottom: 15px;">텅</div>
+                    차고가 비어있습니다. 메인 화면에서 마음에 드는 차량을 추가해 보세요!
                 </div>
-            <?php endforeach; ?>
-        <?php else: ?>
-            <div style="grid-column: 1/-1; text-align: center; padding: 60px; color: #666; background: #1e1e24; border-radius: 12px; border: 1px dashed #333;">
-                <div style="font-size: 3rem; margin-bottom: 15px;">텅~</div>
-                아직 차고에 저장된 차량이 없습니다.<br>검색을 통해 관심 있는 차량을 하트로 찜해보세요!
-            </div>
-        <?php endif; ?>
-    </div>
+            <?php endif; ?>
+        </div>
+    </form>
 </div>
 
+<!-- 체크박스 및 삭제 처리 스크립트 -->
 <script>
-// 휴지통 버튼 누르면 toggle_wishlist.php를 호출해서 삭제하는 로직
-function removeWish(carId) {
-    if(confirm('이 차량을 차고에서 삭제하시겠습니까?')) {
-        fetch('toggle_wishlist.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ car_id: carId })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.status === 'success' && data.action === 'removed') {
-                // 상단 통계를 다시 계산해야 하므로 페이지를 새로고침하는 게 깔끔함!
-                location.reload(); 
-            } else if(data.status === 'error') {
-                alert(data.message);
-            }
-        })
-        .catch(err => {
-            console.error('Error:', err);
-            alert('삭제 중 오류가 발생했습니다.');
+    const checkAll = document.getElementById('checkAll');
+    const checkboxes = document.querySelectorAll('.car-checkbox');
+    const btnDeleteSelected = document.getElementById('btnDeleteSelected');
+    const form = document.getElementById('garageForm');
+    const formAction = document.getElementById('formAction');
+    const singleDeleteId = document.getElementById('singleDeleteId');
+
+    function updateUI() {
+        if(checkboxes.length === 0) return;
+        const checkedCount = document.querySelectorAll('.car-checkbox:checked').length;
+        
+        checkAll.checked = (checkedCount === checkboxes.length);
+        btnDeleteSelected.style.display = checkedCount > 0 ? 'inline-block' : 'none';
+    }
+
+    if(checkAll) {
+        checkAll.addEventListener('change', function() {
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            updateUI();
         });
     }
-}
-// 👇 전체 선택/해제 기능
-document.getElementById('selectAll').addEventListener('change', function() {
-    // 모든 개별 차량 체크박스를 찾아서
-    const checkboxes = document.querySelectorAll('input[name="compare_select"]');
-    // 전체 선택 버튼의 체크 상태(true/false)와 똑같이 맞춰줌!
+
     checkboxes.forEach(cb => {
-        cb.checked = this.checked;
+        cb.addEventListener('change', updateUI);
     });
-});
-// 👇 선택된 차량 비교함으로 넘기기
-function goToCompare() {
-    // 체크된 체크박스들만 싹 다 모아오기
-    const selected = document.querySelectorAll('input[name="compare_select"]:checked');
-    
-    // 2대가 아니면 빠꾸!
-    if (selected.length !== 2) {
-        alert('1:1 비교를 위해 차량을 정확히 2대 선택해 주세요! (현재 ' + selected.length + '대 선택됨)');
-        return;
+
+    function submitBulkDelete() {
+        if(confirm('선택한 차량을 차고에서 삭제하시겠습니까?')) {
+            formAction.value = 'bulk_delete';
+            form.submit();
+        }
     }
-    
-    // 정확히 2대라면 각각에 숨겨둔 검색어(모델명) 꺼내기
-    const car1 = selected[0].getAttribute('data-search');
-    const car2 = selected[1].getAttribute('data-search');
-    
-    // 비교 페이지로 검색어 달아서 날려버리기!
-    window.location.href = 'compare.php?search1=' + encodeURIComponent(car1) + '&search2=' + encodeURIComponent(car2);
-}
+
+    function submitSingleDelete(id) {
+        if(confirm('이 차량을 차고에서 삭제하시겠습니까?')) {
+            formAction.value = 'single_delete';
+            singleDeleteId.value = id;
+            form.submit();
+        }
+    }
 </script>
 
 </body>

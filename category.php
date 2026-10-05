@@ -6,13 +6,19 @@ require_once 'db.php';
 $countStmt = $pdo->query("SELECT COUNT(*) FROM cars");
 $totalRows = number_format($countStmt->fetchColumn());
 
-// 2. 카테고리 필터값 받기 (기본값 세팅)
-$currentCountry = $_GET['country'] ?? 'DE';
+// 2. 카테고리 필터값 받기
+$currentCountry = $_GET['country'] ?? 'ALL'; 
 $currentPowertrain = $_GET['powertrain'] ?? 'all';
-$currentBodyStyle = $_GET['body_style'] ?? 'all'; // 👇 차급별 파라미터 추가!
+$currentBodyStyle = $_GET['body_style'] ?? 'all'; 
+$currentBrand = $_GET['brand'] ?? ''; 
+$currentSort = $_GET['sort'] ?? 'popular'; // 👇 정렬 파라미터 추가!
+
+$brandParam = $currentBrand ? '&brand=' . urlencode($currentBrand) : '';
+$sortParam = '&sort=' . urlencode($currentSort);
 
 // 국가별 대표 브랜드 설정
 $countryBrands = [
+    'ALL' => [], 
     'DE' => ['bmw', 'mercedes-benz', 'audi', 'porsche', 'volkswagen'],
     'KR' => ['hyundai', 'kia', 'genesis', 'chevrolet'],
     'US' => ['tesla', 'ford', 'jeep', 'cadillac'],
@@ -20,42 +26,62 @@ $countryBrands = [
 ];
 
 $countryNames = [
-    'DE' => '독일', 'KR' => '한국', 'US' => '미국', 'JP' => '일본'
+    'ALL' => '전체', 'DE' => '독일', 'KR' => '한국', 'US' => '미국', 'JP' => '일본'
 ];
 
 $targetBrands = $countryBrands[$currentCountry] ?? [];
+$displayBrands = $currentCountry === 'ALL' ? ['bmw', 'hyundai', 'tesla', 'toyota', 'porsche', 'genesis'] : $targetBrands;
 
 // 3. 필터 조건에 맞는 차량들 DB에서 불러오기
 $categoryCars = [];
-if (!empty($targetBrands)) {
-    $placeholders = implode(',', array_fill(0, count($targetBrands), '?'));
-    
-    // 파워트레인 조건식
-    $powertrainSql = "";
-    if ($currentPowertrain === 'electric') {
-        $powertrainSql = " AND LOWER(fuel_type) = 'electricity'";
-    } elseif ($currentPowertrain === 'hybrid') {
-        $powertrainSql = " AND LOWER(fuel_type) LIKE '%hybrid%'";
-    } elseif ($currentPowertrain === 'combustion') {
-        $powertrainSql = " AND LOWER(fuel_type) != 'electricity' AND LOWER(fuel_type) NOT LIKE '%hybrid%'";
-    }
 
-    // 👇 차급별(Body Style) 조건식 추가
-    $bodyStyleSql = "";
-    if ($currentBodyStyle === 'suv') {
-        $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%sport utility%' OR LOWER(vehicle_class) LIKE '%suv%')";
-    } elseif ($currentBodyStyle === 'sedan') {
-        $bodyStyleSql = " AND LOWER(vehicle_class) LIKE '%car%' AND LOWER(vehicle_class) NOT LIKE '%sport utility%'";
-    } elseif ($currentBodyStyle === 'sports') {
-        $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%two seater%' OR LOWER(vehicle_class) LIKE '%sports%')";
-    }
-
-    // 쿼리 병합해서 날리기
-    $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(make) IN ($placeholders) $powertrainSql $bodyStyleSql ORDER BY created_at DESC LIMIT 12");
-    $stmt->execute($targetBrands);
-    $categoryCars = $stmt->fetchAll();
+// 파워트레인 조건식
+$powertrainSql = "";
+if ($currentPowertrain === 'electric') {
+    $powertrainSql = " AND LOWER(fuel_type) = 'electricity'";
+} elseif ($currentPowertrain === 'hybrid') {
+    $powertrainSql = " AND LOWER(fuel_type) LIKE '%hybrid%'";
+} elseif ($currentPowertrain === 'combustion') {
+    $powertrainSql = " AND LOWER(fuel_type) != 'electricity' AND LOWER(fuel_type) NOT LIKE '%hybrid%'";
 }
-?>
+
+// 차급별(Body Style) 조건식
+$bodyStyleSql = "";
+if ($currentBodyStyle === 'suv') {
+    $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%sport utility%' OR LOWER(vehicle_class) LIKE '%suv%')";
+} elseif ($currentBodyStyle === 'sedan') {
+    $bodyStyleSql = " AND LOWER(vehicle_class) LIKE '%car%' AND LOWER(vehicle_class) NOT LIKE '%sport utility%'";
+} elseif ($currentBodyStyle === 'sports') {
+    $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%two seater%' OR LOWER(vehicle_class) LIKE '%sports%')";
+}
+
+// 👇 정렬 조건식 (인기순은 기본 DB 등록순, 최신 연식순은 year 기준 내림차순)
+$orderBySql = " ORDER BY created_at DESC";
+if ($currentSort === 'newest') {
+    $orderBySql = " ORDER BY year DESC, created_at DESC";
+}
+
+// 👇 LIMIT 12를 제거하여 전체 데이터가 출력되도록 수정
+if ($currentBrand) {
+    $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(make) = ? $powertrainSql $bodyStyleSql $orderBySql");
+    $stmt->execute([strtolower($currentBrand)]);
+    $categoryCars = $stmt->fetchAll();
+    $sectionTitle = ucfirst($currentBrand) . " 탐색";
+} else {
+    if ($currentCountry === 'ALL') {
+        $stmt = $pdo->prepare("SELECT * FROM cars WHERE 1=1 $powertrainSql $bodyStyleSql $orderBySql");
+        $stmt->execute();
+        $categoryCars = $stmt->fetchAll();
+    } else {
+        if (!empty($targetBrands)) {
+            $placeholders = implode(',', array_fill(0, count($targetBrands), '?'));
+            $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(make) IN ($placeholders) $powertrainSql $bodyStyleSql $orderBySql");
+            $stmt->execute($targetBrands);
+            $categoryCars = $stmt->fetchAll();
+        }
+    }
+    $sectionTitle = ($currentCountry === 'ALL' ? '글로벌 전체' : $currentCountry . ' ' . $countryNames[$currentCountry]) . ' 브랜드 탐색';
+}
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -92,17 +118,22 @@ if (!empty($targetBrands)) {
         .list-btn { background: #121212; border: 1px solid #333; border-radius: 12px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: 0.2s; font-weight: 600; font-size: 0.95rem; }
         .list-btn:hover { border-color: #555; transform: translateY(-2px); }
         .icon-wrap { display: flex; align-items: center; gap: 10px; }
+        .list-btn.active { border-color: #00e5ff; background: rgba(0, 229, 255, 0.05); }
 
         /* 하단 브랜드 바 */
         .brand-bar { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 20px 30px; display: flex; align-items: center; gap: 20px; margin-bottom: 40px; }
         .brand-bar-title { font-size: 0.85rem; color: #666; font-weight: 800; letter-spacing: 1px; }
         .brand-icons { display: flex; gap: 15px; }
-        .b-icon { width: 45px; height: 45px; background: #121212; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; font-size: 1rem; border: 1px solid #333; color: #ccc; }
+        
+        .b-icon { width: 45px; height: 45px; background: #121212; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; font-size: 1rem; border: 1px solid #333; color: #ccc; transition: 0.3s; cursor: pointer; }
+        .b-icon:hover { border-color: #00e5ff; color: #00e5ff; transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0, 229, 255, 0.15); }
+        .b-icon.active-brand { border-color: #00e5ff; color: #00e5ff; background: rgba(0, 229, 255, 0.1); transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0, 229, 255, 0.15); }
 
         /* 차량 리스트 결과 영역 */
         .section-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
         .section-header h2 { font-size: 1.3rem; margin: 0; display: flex; align-items: center; gap: 10px; }
-        .sort-select { background: #1e1e24; color: #fff; border: 1px solid #333; padding: 8px 15px; border-radius: 8px; outline: none; }
+        .sort-select { background: #1e1e24; color: #fff; border: 1px solid #333; padding: 8px 15px; border-radius: 8px; outline: none; cursor: pointer; transition: 0.2s; }
+        .sort-select:hover { border-color: #555; }
 
         .car-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 60px; }
         .car-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 25px; transition: 0.2s; display: flex; flex-direction: column; }
@@ -118,9 +149,6 @@ if (!empty($targetBrands)) {
 
         .btn-detail { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #ccc; text-align: center; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: 0.2s; cursor: pointer; display: block; }
         .btn-detail:hover { background: #fff; color: #000; border-color: #fff; }
-        .list-btn:hover { border-color: #555; transform: translateY(-2px); }
-        /* 👇 이 한 줄 추가! (선택된 파워트레인 버튼 강조) */
-        .list-btn.active { border-color: #00e5ff; background: rgba(0, 229, 255, 0.05); }
     </style>
 </head>
 <body>
@@ -139,22 +167,24 @@ if (!empty($targetBrands)) {
     </div>
 
     <!-- 카테고리 필터 영역 -->
-<!-- 카테고리 필터 영역 (다중 필터링 적용) -->
     <div class="filter-grid">
-        <!-- 1. 생산 국가별 -->
+        <!-- 1. 생산 국가별 (필터 이동 시 정렬 상태도 유지 $sortParam) -->
         <div class="filter-card">
             <div class="filter-title">🌍 생산 국가별 (Heritage & Country)</div>
             <div class="country-grid">
-                <a href="?country=DE&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?>" class="country-btn <?= $currentCountry == 'DE' ? 'active' : '' ?>">
+                <a href="?country=ALL&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'ALL' ? 'active' : '' ?>" style="grid-column: 1 / -1; display: flex; justify-content: center; align-items: baseline; gap: 8px; padding: 15px;">
+                    <strong style="margin-bottom: 0;">ALL</strong><span>Global</span>
+                </a>
+                <a href="?country=DE&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'DE' ? 'active' : '' ?>">
                     <strong>DE</strong><span>Germany</span>
                 </a>
-                <a href="?country=KR&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?>" class="country-btn <?= $currentCountry == 'KR' ? 'active' : '' ?>">
+                <a href="?country=KR&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'KR' ? 'active' : '' ?>">
                     <strong>KR</strong><span>Korea</span>
                 </a>
-                <a href="?country=US&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?>" class="country-btn <?= $currentCountry == 'US' ? 'active' : '' ?>">
+                <a href="?country=US&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'US' ? 'active' : '' ?>">
                     <strong>US</strong><span>USA</span>
                 </a>
-                <a href="?country=JP&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?>" class="country-btn <?= $currentCountry == 'JP' ? 'active' : '' ?>">
+                <a href="?country=JP&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'JP' ? 'active' : '' ?>">
                     <strong>JP</strong><span>Japan</span>
                 </a>
             </div>
@@ -164,35 +194,35 @@ if (!empty($targetBrands)) {
         <div class="filter-card">
             <div class="filter-title">⚡ 파워트레인 (Powertrain)</div>
             <div class="list-btn-group">
-                <a href="?country=<?= $currentCountry ?>&powertrain=all&body_style=<?= $currentBodyStyle ?>" class="list-btn <?= $currentPowertrain == 'all' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=all&body_style=<?= $currentBodyStyle ?><?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentPowertrain == 'all' ? 'active' : '' ?>">
                     <div class="icon-wrap"><span style="color:#ccc; font-size:1.2rem;">🔍</span> All Types</div>
                 </a>
-                <a href="?country=<?= $currentCountry ?>&powertrain=electric&body_style=<?= $currentBodyStyle ?>" class="list-btn <?= $currentPowertrain == 'electric' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=electric&body_style=<?= $currentBodyStyle ?><?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentPowertrain == 'electric' ? 'active' : '' ?>">
                     <div class="icon-wrap"><span style="color:#00e5ff; font-size:1.2rem;">⚡</span> Pure Electric</div>
                 </a>
-                <a href="?country=<?= $currentCountry ?>&powertrain=hybrid&body_style=<?= $currentBodyStyle ?>" class="list-btn <?= $currentPowertrain == 'hybrid' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=hybrid&body_style=<?= $currentBodyStyle ?><?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentPowertrain == 'hybrid' ? 'active' : '' ?>">
                     <div class="icon-wrap"><span style="color:#00ff88; font-size:1.2rem;">🌿</span> Hybrid</div>
                 </a>
-                <a href="?country=<?= $currentCountry ?>&powertrain=combustion&body_style=<?= $currentBodyStyle ?>" class="list-btn <?= $currentPowertrain == 'combustion' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=combustion&body_style=<?= $currentBodyStyle ?><?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentPowertrain == 'combustion' ? 'active' : '' ?>">
                     <div class="icon-wrap"><span style="color:#ff4b4b; font-size:1.2rem;">⛽</span> Combustion</div>
                 </a>
             </div>
         </div>
 
-        <!-- 3. 차급별 (Body Style) 활성화 완료! -->
+        <!-- 3. 차급별 (Body Style) -->
         <div class="filter-card">
             <div class="filter-title">🚙 차급별 (Body Style)</div>
             <div class="list-btn-group">
-                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=all" class="list-btn <?= $currentBodyStyle == 'all' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=all<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'all' ? 'active' : '' ?>">
                     <span>All Styles</span> <span style="font-size:1.2rem;">🔍</span>
                 </a>
-                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=suv" class="list-btn <?= $currentBodyStyle == 'suv' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=suv<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'suv' ? 'active' : '' ?>">
                     <span>SUV</span> <span style="font-size:1.2rem; filter: grayscale(1);">🚙</span>
                 </a>
-                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=sedan" class="list-btn <?= $currentBodyStyle == 'sedan' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=sedan<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'sedan' ? 'active' : '' ?>">
                     <span>Sedan</span> <span style="font-size:1.2rem; filter: grayscale(1);">🚗</span>
                 </a>
-                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=sports" class="list-btn <?= $currentBodyStyle == 'sports' ? 'active' : '' ?>">
+                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=sports<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'sports' ? 'active' : '' ?>">
                     <span>Sports</span> <span style="font-size:1.2rem; filter: grayscale(1);">🏎️</span>
                 </a>
             </div>
@@ -203,20 +233,24 @@ if (!empty($targetBrands)) {
     <div class="brand-bar">
         <div class="brand-bar-title">TOP BRANDS</div>
         <div class="brand-icons">
-            <?php foreach ($targetBrands as $brand): ?>
-                <div class="b-icon" title="<?= htmlspecialchars(ucfirst($brand)) ?>">
+            <?php foreach ($displayBrands as $brand): ?>
+                <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?>&brand=<?= urlencode($brand) ?><?= $sortParam ?>" 
+                   class="b-icon <?= $currentBrand === $brand ? 'active-brand' : '' ?>" 
+                   title="<?= htmlspecialchars(ucfirst($brand)) ?>">
                     <?= strtoupper(substr($brand, 0, 1)) ?>
-                </div>
+                </a>
             <?php endforeach; ?>
         </div>
     </div>
 
     <!-- 차량 리스트 영역 -->
     <div class="section-header">
-        <h2><?= $currentCountry ?> <?= $countryNames[$currentCountry] ?> 브랜드 탐색 <span style="font-size: 0.8rem; color:#666; font-weight:normal;">업데이트됨</span></h2>
-        <select class="sort-select">
-            <option>인기순 정렬</option>
-            <option>최신 연식순</option>
+        <h2><?= $sectionTitle ?> <span style="font-size: 0.8rem; color:#666; font-weight:normal;">총 <?= count($categoryCars) ?>건</span></h2>
+        
+        <!-- 👇 JavaScript로 URL 파라미터를 조작하여 즉시 정렬되도록 구현 -->
+        <select class="sort-select" onchange="const urlParams = new URLSearchParams(window.location.search); urlParams.set('sort', this.value); window.location.search = urlParams.toString();">
+            <option value="popular" <?= $currentSort === 'popular' ? 'selected' : '' ?>>인기순 정렬</option>
+            <option value="newest" <?= $currentSort === 'newest' ? 'selected' : '' ?>>최신 연식순</option>
         </select>
     </div>
 
@@ -239,30 +273,28 @@ if (!empty($targetBrands)) {
                         </div>
                     </div>
                     
-                    <!-- 차량 상세페이지나 비교함으로 넘기는 용도 (현재는 알림창) -->
                     <a href="detail.php?make=<?= urlencode($car['make']) ?>&model=<?= urlencode($car['model']) ?>&year=<?= urlencode($car['year']) ?>" class="btn-detail">제원 상세보기</a>
                 </div>
             <?php endforeach; ?>
         <?php else: ?>
             <div style="grid-column: 1/-1; padding: 40px; text-align: center; color: #666; background: #1e1e24; border-radius: 12px;">
-                현재 DB에 저장된 <strong><?= $countryNames[$currentCountry] ?></strong> 브랜드의 차량 데이터가 없습니다.<br>
-                메인 화면에서 검색을 통해 데이터를 먼저 적재해 주세요!
+                선택하신 필터 조건에 맞는 차량 데이터가 없습니다.<br>
+                필터를 조정하거나 데이터를 추가해 주세요!
             </div>
         <?php endif; ?>
     </div>
 </div>
 <script>
-        // 1. 페이지를 떠나기 직전(새로고침 직전)에 현재 스크롤 높이를 기억해둠
+        // 새로고침이나 정렬 변경 시 스크롤 위치 유지
         window.addEventListener('beforeunload', function() {
             sessionStorage.setItem('scrollPosition', window.scrollY);
         });
 
-        // 2. 페이지가 다시 로드되자마자 기억해둔 높이로 찰나의 순간에 스크롤을 내려버림
         window.addEventListener('load', function() {
             const scrollPos = sessionStorage.getItem('scrollPosition');
             if (scrollPos !== null) {
                 window.scrollTo(0, parseInt(scrollPos));
-                sessionStorage.removeItem('scrollPosition'); // 볼일 끝났으면 삭제
+                sessionStorage.removeItem('scrollPosition'); 
             }
         });
 </script>

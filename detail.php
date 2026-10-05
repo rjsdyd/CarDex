@@ -2,235 +2,289 @@
 session_start();
 require_once 'db.php';
 
-// 1. URL에서 브랜드, 모델명, 연식을 받아옴
+// 1. 선택된 차량 정보 받기
 $make = $_GET['make'] ?? '';
 $model = $_GET['model'] ?? '';
 $year = $_GET['year'] ?? '';
 
 if (!$make || !$model) {
-    die("<script>alert('잘못된 접근입니다.'); location.href='index.php';</script>");
+    die("<script>alert('잘못된 접근입니다.'); history.back();</script>");
 }
 
-// 2. 해당 자동차 데이터를 DB에서 꺼내오기 (id 대신 3가지 조합으로 검색)
-$stmt = $pdo->prepare("SELECT * FROM cars WHERE make = :make AND model = :model AND year = :year LIMIT 1");
-$stmt->execute([
-    'make' => $make, 
-    'model' => $model, 
-    'year' => $year
-]);
+// 2. DB에서 해당 차량 상세 정보 가져오기
+$stmt = $pdo->prepare("SELECT * FROM cars WHERE make = ? AND model = ? AND year = ? LIMIT 1");
+$stmt->execute([$make, $model, $year]);
 $car = $stmt->fetch();
 
 if (!$car) {
-    die("<script>alert('데이터를 찾을 수 없습니다.'); location.href='index.php';</script>");
+    die("<script>alert('차량 정보를 찾을 수 없습니다.'); history.back();</script>");
 }
 
-// 3. 같은 클래스(차종)의 다른 자동차 3대 자동으로 가져오기
-$simStmt = $pdo->prepare("SELECT * FROM cars WHERE vehicle_class = :class AND model != :model LIMIT 3");
-$simStmt->execute([
-    'class' => $car['vehicle_class'],
-    'model' => $car['model']
-]);
-$similarCars = $simStmt->fetchAll();
-
-// 4. DB 데이터를 화면에 뿌리기 좋게 변수 정리
-$make = $car['make'];
-$model = $car['model'];
-$year = $car['year'];
-$fuelType = ucfirst($car['fuel_type']);
-$class = $car['vehicle_class'];
-$drive = strtoupper($car['drive']);
-
-// 연비 계산 로직 (1 MPG = 약 0.425 km/L)
-$city_mpg = (int)$car['city_mpg'];
-$hwy_mpg = (int)$car['highway_mpg'];
-
-$city_kml = $city_mpg > 0 ? number_format($city_mpg * 0.425, 1) : '-';
-$hwy_kml = $hwy_mpg > 0 ? number_format($hwy_mpg * 0.425, 1) : '-';
-
-$city_percent = $city_mpg > 0 ? min(($city_mpg / 50) * 100, 100) : 0;
-$hwy_percent = $hwy_mpg > 0 ? min(($hwy_mpg / 50) * 100, 100) : 0;
-// 👇 5. 현재 이 자동차가 내 차고에 있는지 확인 (로그인했을 때만!)
+// 3. 찜하기(차고에 저장) 상태 확인
 $isWished = false;
-if (isset($_SESSION['user_id'])) {
-    $wishStmt = $pdo->prepare("SELECT * FROM wishlist WHERE user_id = :user_id AND car_id = :car_id");
-    $wishStmt->execute(['user_id' => $_SESSION['user_id'], 'car_id' => $car['car_id']]);
-    $isWished = $wishStmt->fetch(); 
+$carIdColumn = isset($car['car_id']) ? 'car_id' : (isset($car['id']) ? 'id' : null);
+if ($carIdColumn && isset($_SESSION['user_id'])) {
+    $wishStmt = $pdo->prepare("SELECT 1 FROM wishlist WHERE user_id = ? AND car_id = ?");
+    $wishStmt->execute([$_SESSION['user_id'], $car[$carIdColumn]]);
+    $isWished = (bool)$wishStmt->fetch();
 }
-?>
 
+// 4. 유사한 클래스의 경쟁 차종 가져오기
+$compStmt = $pdo->prepare("SELECT * FROM cars WHERE vehicle_class = ? AND model != ? ORDER BY RAND() LIMIT 3");
+$compStmt->execute([$car['vehicle_class'], $car['model']]);
+$competitors = $compStmt->fetchAll();
+?>
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CarDex - <?= htmlspecialchars(ucfirst($make) . ' ' . $model) ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=<?= time() ?>">
+    <title>CarDex - <?= htmlspecialchars(ucfirst($car['make']) . ' ' . ucfirst($car['model'])) ?></title>
+    <style>
+        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; }
+        a { text-decoration: none; color: inherit; }
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+
+        /* 상단 네비게이션 & 타이틀 */
+        .breadcrumb { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+        .breadcrumb strong { color: #ccc; }
+        
+        /* 👇 타이틀 영역 레이아웃 개선 (gap 추가 및 정렬) */
+        .title-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; gap: 30px; }
+        .title-left { flex: 1; min-width: 0; /* 텍스트가 컨테이너를 넘지 않도록 방지 */ }
+        
+        .badges { display: flex; gap: 10px; margin-bottom: 15px; }
+        .badge { border: 1px solid #333; padding: 5px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
+        .badge-year { background: #1e1e24; color: #ccc; }
+        .badge-fuel { background: rgba(0, 255, 136, 0.1); color: #00ff88; border-color: rgba(0, 255, 136, 0.3); }
+        
+        .main-title { font-size: 3rem; font-weight: 900; margin: 0; text-transform: uppercase; word-wrap: break-word; line-height: 1.2; }
+        .main-title span { color: #00e5ff; }
+
+        /* 👇 액션 버튼 영역 개선 (flex-shrink: 0 과 white-space: nowrap 추가) */
+        .action-btns { display: flex; gap: 15px; flex-shrink: 0; }
+        .btn-compare { background: #121212; border: 1px solid #333; color: #ccc; padding: 12px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .btn-compare:hover { border-color: #fff; color: #fff; }
+        .btn-wish { background: #00e5ff; border: none; color: #000; padding: 12px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .btn-wish:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,229,255,0.3); }
+
+        /* 중앙 벤토 그리드 */
+        .bento-grid { display: grid; grid-template-columns: 2fr 1.2fr 1.2fr; gap: 20px; margin-bottom: 20px; }
+        .bento-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 30px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* 카드 1: 퍼포먼스 */
+        .perf-title { font-size: 1.5rem; font-weight: 800; margin-bottom: 10px; }
+        .perf-desc { color: #888; font-size: 0.9rem; margin-bottom: 40px; }
+        .perf-boxes { display: flex; gap: 15px; margin-top: auto; }
+        .p-box { background: #121212; border: 1px solid #2a2a2f; padding: 15px; border-radius: 12px; display: flex; align-items: center; gap: 15px; flex: 1; }
+        .p-icon { width: 40px; height: 40px; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 1.2rem; }
+        .p-info span { display: block; font-size: 0.7rem; color: #666; margin-bottom: 3px; text-transform: uppercase; }
+        .p-info strong { font-size: 1rem; text-transform: capitalize; }
+
+        /* 카드 2: 파워트레인 */
+        .card-header { font-size: 0.9rem; color: #a0a0a0; font-weight: 600; margin-bottom: 25px; display: flex; align-items: center; gap: 8px; }
+        .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; flex: 1; }
+        .spec-item { background: #121212; border: 1px solid #2a2a2f; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        .spec-icon { font-size: 1.5rem; margin-bottom: 8px; opacity: 0.8; }
+        .spec-item span { display: block; font-size: 0.7rem; color: #666; margin-bottom: 5px; text-transform: uppercase; }
+        .spec-item strong { font-size: 1.1rem; font-weight: 800; text-transform: capitalize; }
+
+        /* 카드 3: 연비/엔진 분석 */
+        .eco-content { text-align: center; margin-top: auto; margin-bottom: auto; }
+        .eco-icon { font-size: 2.5rem; margin-bottom: 15px; opacity: 0.5; }
+        .eco-text { color: #888; font-size: 0.85rem; line-height: 1.6; margin-bottom: 30px; }
+        .eco-source { font-size: 0.75rem; color: #555; text-align: right; margin-top: auto; }
+        .eco-source span { background: rgba(255,255,255,0.05); padding: 3px 8px; border-radius: 4px; }
+
+        /* 하단 경쟁 차종 */
+        .comp-section { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 30px; }
+        .comp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .comp-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+        .comp-link { color: #00e5ff; font-size: 0.85rem; font-weight: bold; }
+        
+        .comp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .comp-card { background: #121212; border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .comp-card:hover { border-color: #555; transform: translateY(-2px); }
+        .comp-info span { display: block; font-size: 0.75rem; color: #888; margin-bottom: 3px; }
+        .comp-info strong { font-size: 1.1rem; font-weight: 800; text-transform: capitalize; }
+        .comp-spec { text-align: right; }
+        .comp-spec strong { display: block; font-size: 1rem; }
+        .comp-spec span { font-size: 0.7rem; color: #666; text-transform: uppercase; }
+
+    </style>
 </head>
 <body>
 
-    <?php include 'header.php'; ?>
+<?php include 'header.php'; ?>
 
-    <div class="detail-container">
-        
-        <!-- 상단 헤더 -->
-        <div class="detail-header">
-            <div class="breadcrumb">Home > <?= htmlspecialchars(ucfirst($make)) ?> > <strong><?= htmlspecialchars(ucfirst($model)) ?></strong></div>
-            
-            <div class="title-action-wrap">
-                <div class="title-area">
-                    <div class="tags">
-                        <span class="tag tag-outline"><?= htmlspecialchars($year) ?></span>
-                        <span class="tag tag-green"><?= htmlspecialchars($fuelType) ?></span>
-                    </div>
-                    <h1><?= htmlspecialchars(strtoupper($make)) ?> <span class="text-cyan"><?= htmlspecialchars(strtoupper($model)) ?></span></h1>
-                </div>
-                
-                <div class="action-area">
-                    <button class="btn btn-outline">⚖️ 비교함 담기</button>
-                    <button class="btn btn-primary" id="wishBtn" onclick="toggleWish(<?= $car['car_id'] ?>)"
-                            style="<?= $isWished ? 'background: #ff4b4b; color: #fff;' : '' ?>">
-                        <?= $isWished ? '❤️ 차고에 저장됨' : '🤍 차고에 저장' ?>
-                    </button>
-                </div>
+<div class="container">
+    <div class="breadcrumb">
+        Home > <?= htmlspecialchars(ucfirst($car['make'])) ?> > <strong><?= htmlspecialchars(strtoupper($car['model'])) ?></strong>
+    </div>
+
+    <div class="title-section">
+        <!-- 타이틀을 묶는 div에 title-left 클래스 추가 -->
+        <div class="title-left">
+            <div class="badges">
+                <div class="badge badge-year"><?= htmlspecialchars($car['year']) ?></div>
+                <div class="badge badge-fuel"><?= htmlspecialchars(ucfirst($car['fuel_type'] ?: 'Unknown')) ?></div>
             </div>
+            <h1 class="main-title"><?= htmlspecialchars(strtoupper($car['make'])) ?> <span><?= htmlspecialchars(strtoupper($car['model'])) ?></span></h1>
         </div>
-
-        <div class="detail-bento-grid">
-            
-            <!-- 1. 히어로 카드 -->
-            <div class="card d-card-hero">
-                <h2>완벽한 퍼포먼스와 스펙</h2>
-                <p>글로벌 기준에 맞춘 상세 제원 분석</p>
-                <div class="hero-bg-car">🚙</div> 
-
-                <div class="hero-badges">
-                    <div class="h-badge">
-                        <span class="icon">🚘</span>
-                        <div><small>CLASS</small><br><strong><?= htmlspecialchars($class) ?></strong></div>
-                    </div>
-                    <div class="h-badge">
-                        <span class="icon">🏢</span>
-                        <div><small>MAKE</small><br><strong><?= htmlspecialchars(ucfirst($make)) ?></strong></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 2. 파워트레인 카드 -->
-            <div class="card d-card-powertrain">
-                <div class="card-title"><span class="text-cyan">⚙️</span> 파워트레인</div>
-                <div class="pt-grid">
-                    <div>
-                        <small>FUEL TYPE</small>
-                        <strong><?= htmlspecialchars($fuelType) ?></strong>
-                    </div>
-                    <div>
-                        <small>DRIVE</small>
-                        <strong><?= htmlspecialchars($drive) ?></strong>
-                    </div>
-                    <div>
-                        <small>YEAR</small>
-                        <strong><?= htmlspecialchars($year) ?> 년식</strong>
-                    </div>
-                    <div>
-                        <small>TRANSMISSION</small>
-                        <strong>Auto / Manual</strong>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 3. 연비 카드 -->
-            <div class="card d-card-fuel">
-                <div class="card-title"><span class="text-cyan">⛽</span> 연비 분석 (Fuel Economy)</div>
-                
-                <?php if ($city_mpg > 0 || $hwy_mpg > 0): ?>
-                    <!-- 정상적으로 연비 데이터가 있을 때 보여줄 화면 -->
-                    <div class="fuel-item">
-                        <div class="f-label">도심 (City) <span><?= $city_kml ?> <small>km/L</small></span></div>
-                        <div class="f-bar-bg"><div class="f-bar-fill city" style="width: <?= $city_percent ?>%;"></div></div>
-                        <div class="f-sub"><?= $city_mpg ?> MPG (미국 기준)</div>
-                    </div>
-
-                    <div class="fuel-item">
-                        <div class="f-label">고속 (Highway) <span><?= $hwy_kml ?> <small>km/L</small></span></div>
-                        <div class="f-bar-bg"><div class="f-bar-fill highway" style="width: <?= $hwy_percent ?>%;"></div></div>
-                        <div class="f-sub"><?= $hwy_mpg ?> MPG (미국 기준)</div>
-                    </div>
-                <?php else: ?>
-                    <!-- API가 연비(0)를 안 줬을 때 보여줄 방어 화면 -->
-                    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#a0a0a0; font-size:0.9rem; text-align:center; padding: 20px 0;">
-                        <span style="font-size:2rem; margin-bottom:10px; opacity:0.5;">📉</span>
-                        해당 차량은 데이터 제공사(API)의 사정으로<br>연비 상세 스펙이 제공되지 않습니다.
-                    </div>
-                <?php endif; ?>
-
-                <div class="data-source">데이터 출처 <span>API Ninjas</span></div>
-            </div>
-
-            <!-- 4. 유사 차종 (동적 렌더링) -->
-            <div class="card d-card-similar">
-                <div class="similar-header">
-                    <div class="card-title"><span class="text-cyan">🚙</span> 유사한 클래스(<?= htmlspecialchars($class) ?>)의 경쟁 차종</div>
-                    <a href="index.php?q=<?= urlencode($class) ?>" class="text-cyan">비교함으로 이동 →</a>
-                </div>
-                
-                <div class="similar-list">
-                    <?php if (count($similarCars) > 0): ?>
-                        <?php foreach($similarCars as $sim): ?>
-                            <?php 
-                                $sim_kml = $sim['city_mpg'] > 0 ? number_format($sim['city_mpg'] * 0.425, 1) : '-'; 
-                            ?>
-                            <!-- 👇 유사 차종 클릭 시에도 브랜드, 모델명, 연식을 들고 이동! 👇 -->
-                            <div class="sim-item" onclick="location.href='detail.php?make=<?= urlencode($sim['make']) ?>&model=<?= urlencode($sim['model']) ?>&year=<?= urlencode($sim['year']) ?>'">
-                                <div>
-                                    <div class="sim-brand"><?= htmlspecialchars(ucfirst($sim['make'])) ?></div>
-                                    <div class="sim-name"><?= htmlspecialchars($sim['model']) ?></div>
-                                </div>
-                                <div class="sim-spec"><strong><?= $sim_kml ?></strong> km/L<br><small><?= htmlspecialchars(strtoupper($sim['drive'])) ?></small></div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <p style="color:#a0a0a0; font-size:0.9rem; padding: 10px;">데이터베이스에 아직 비슷한 스펙의 차량이 수집되지 않았습니다.</p>
-                    <?php endif; ?>
-                </div>
-            </div>
-
+        
+        <div class="action-btns">
+            <!-- 비교함 담기 버튼 -->
+            <a href="compare.php?search1=<?= urlencode($car['model']) ?>" class="btn-compare">
+                ⚖️ 비교함 담기
+            </a>
+            <!-- 찜하기 버튼 -->
+            <button id="detail-wish-btn" class="btn-wish" onclick="toggleDetailWish(<?= $car[$carIdColumn] ?>)">
+                <?= $isWished ? '❤️ 차고에 저장됨' : '🤍 차고에 저장' ?>
+            </button>
         </div>
     </div>
 
-    <script>
-        function toggleWish(carId) {
-            const btn = document.getElementById('wishBtn');
+    <!-- 중앙 벤토 박스 영역 -->
+    <div class="bento-grid">
+        <!-- 1. 퍼포먼스 박스 -->
+        <div class="bento-card">
+            <div class="perf-title">완벽한 퍼포먼스와 스펙</div>
+            <div class="perf-desc">글로벌 기준에 맞춘 상세 제원 분석</div>
             
-            // 찜하기 백엔드 파일로 몰래 데이터 쏘기
-            fetch('toggle_wishlist.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ car_id: carId })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if(data.status === 'error' && data.redirect) {
-                    alert(data.message);
-                    window.location.href = data.redirect;
-                    return;
-                }
-                if(data.status === 'success') {
-                    if(data.action === 'added') {
-                        btn.innerHTML = '❤️ 차고에 저장됨';
-                        btn.style.background = '#ff4b4b'; // 빨간색으로 변경
-                        btn.style.color = '#fff';
-                    } else {
-                        btn.innerHTML = '🤍 차고에 저장';
-                        btn.style.background = 'var(--primary-cyan)'; // 원래 민트색으로
-                        btn.style.color = '#000';
-                    }
+            <div class="perf-boxes">
+                <div class="p-box">
+                    <div class="p-icon">🚙</div>
+                    <div class="p-info">
+                        <span>Class</span>
+                        <strong><?= htmlspecialchars($car['vehicle_class'] ?: 'N/A') ?></strong>
+                    </div>
+                </div>
+                <div class="p-box">
+                    <div class="p-icon">🏢</div>
+                    <div class="p-info">
+                        <span>Make</span>
+                        <strong><?= htmlspecialchars($car['make']) ?></strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 파워트레인 박스 -->
+        <div class="bento-card">
+            <div class="card-header">⚙️ 파워트레인</div>
+            <div class="spec-grid">
+                <div class="spec-item">
+                    <div class="spec-icon">⛽</div>
+                    <span>Fuel Type</span>
+                    <strong><?= htmlspecialchars($car['fuel_type'] ?: 'N/A') ?></strong>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-icon">🛠️</div>
+                    <span>Drive</span>
+                    <strong><?= htmlspecialchars(strtoupper($car['drive'] ?: 'N/A')) ?></strong>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-icon">📅</div>
+                    <span>Year</span>
+                    <strong><?= htmlspecialchars($car['year']) ?></strong>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-icon">🕹</div>
+                    <span>Trans</span>
+                    <strong><?= htmlspecialchars($car['transmission'] === 'a' ? 'Auto' : ($car['transmission'] === 'm' ? 'Manual' : 'A/M')) ?></strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 연비 분석 / 엔진 상세 -->
+        <div class="bento-card">
+            <?php if ($car['combination_mpg'] > 0): ?>
+                <div class="card-header">⛽ 연비 분석 (Fuel Economy)</div>
+                <div class="eco-content">
+                    <div class="eco-icon" style="opacity: 1;">🌿</div>
+                    <h2 style="font-size: 2.5rem; margin: 10px 0; color: #00ff88;"><?= htmlspecialchars($car['combination_mpg']) ?> <span style="font-size: 1rem; color: #888;">MPG</span></h2>
+                    <p class="eco-text">도심 <?= htmlspecialchars($car['city_mpg']) ?> / 고속도로 <?= htmlspecialchars($car['highway_mpg']) ?></p>
+                </div>
+            <?php else: ?>
+                <div class="card-header">⚙️ 엔진 상세 스펙 (Engine Specs)</div>
+                <div class="eco-content">
+                    <?php 
+                    $fuelStr = strtolower($car['fuel_type']);
+                    if (strpos($fuelStr, 'electric') !== false || $fuelStr === 'electricity'): 
+                    ?>
+                        <div class="eco-icon" style="opacity: 1;">⚡</div>
+                        <h2 style="font-size: 2rem; margin: 10px 0; color: #00e5ff;">Pure Electric</h2>
+                        <p class="eco-text">순수 전기 및 전동화 모델입니다.<br><span style="font-size: 0.8rem; color: #666;">내연기관 배기량/연비 데이터 미제공</span></p>
+                    <?php else: ?>
+                        <div class="eco-icon" style="opacity: 1;">🔥</div>
+                        <h2 style="font-size: 2.5rem; margin: 10px 0; color: #ff4b4b;"><?= htmlspecialchars($car['cylinders'] ?: '0') ?> <span style="font-size: 1rem; color: #888;">기통</span></h2>
+                        <p class="eco-text">배기량(Displacement) : <?= htmlspecialchars($car['displacement'] ?: '0') ?> L<br><span style="font-size: 0.75rem; color: #666;">연비 데이터 미제공 모델</span></p>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+            
+            <div class="eco-source">데이터 출처 <span>API Ninjas</span></div>
+        </div>
+    </div>
+
+    <!-- 하단 경쟁 차종 박스 -->
+    <div class="comp-section">
+        <div class="comp-header">
+            <h3>🚙 유사한 클래스(<?= htmlspecialchars($car['vehicle_class'] ?: 'Unknown') ?>)의 경쟁 차종</h3>
+            <a href="category.php?body_style=all" class="comp-link">비교함으로 이동 ➔</a>
+        </div>
+        
+        <div class="comp-grid">
+            <?php if (!empty($competitors)): ?>
+                <?php foreach ($competitors as $comp): ?>
+                    <a href="detail.php?make=<?= urlencode($comp['make']) ?>&model=<?= urlencode($comp['model']) ?>&year=<?= urlencode($comp['year']) ?>" class="comp-card">
+                        <div class="comp-info">
+                            <span><?= htmlspecialchars(ucfirst($comp['make'])) ?></span>
+                            <strong><?= htmlspecialchars(strtolower($comp['model'])) ?></strong>
+                        </div>
+                        <div class="comp-spec">
+                            <strong><?= htmlspecialchars($comp['combination_mpg'] > 0 ? $comp['combination_mpg'] . ' MPG' : '- MPG') ?></strong>
+                            <span><?= htmlspecialchars(strtoupper($comp['drive'] ?: 'N/A')) ?></span>
+                        </div>
+                    </a>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div style="grid-column: 1/-1; padding: 20px; color: #666; text-align: center;">유사한 클래스의 경쟁 차종 데이터가 부족합니다.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+</div>
+
+<!-- 찜하기(AJAX) 스크립트 -->
+<script>
+    function toggleDetailWish(carId) {
+        fetch('toggle_wishlist.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ car_id: carId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'error' && data.redirect) {
+                alert(data.message);
+                window.location.href = data.redirect;
+                return;
+            }
+            if(data.status === 'success') {
+                const btn = document.getElementById('detail-wish-btn');
+                if(data.action === 'added') {
+                    btn.innerHTML = '❤️ 차고에 저장됨';
                 } else {
-                    alert('오류가 발생했습니다: ' + data.message);
+                    btn.innerHTML = '🤍 차고에 저장';
                 }
-            })
-            .catch(error => console.error('Error:', error));
-        }
-    </script>
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('오류가 발생했습니다. 다시 시도해주세요.');
+        });
+    }
+</script>
+
 </body>
 </html>

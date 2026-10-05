@@ -24,16 +24,23 @@ $current_page = basename($_SERVER['PHP_SELF']);
         padding: 0;
     }
 
-    /* 5. 공통 헤더 완벽 고정 스타일 */
+    /* 5. 공통 헤더 완벽 고정 스타일 (Sticky & 블러 효과 추가) */
     .common-header { 
         display: flex !important; 
         justify-content: space-between !important; 
         align-items: center !important; 
         padding: 0 40px !important; 
         height: 75px !important;    
-        background-color: #1a1a1a !important; 
         border-bottom: 1px solid #333 !important; 
         width: 100% !important; 
+        
+        /* 👇 스크롤 시 상단에 고정되도록 추가된 핵심 속성들 */
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 9999 !important;
+        background-color: rgba(26, 26, 26, 0.85) !important; /* 약간 투명하게 설정 */
+        backdrop-filter: blur(12px) !important; /* 뒷배경 블러 효과 */
+        -webkit-backdrop-filter: blur(12px) !important; /* 사파리 호환용 */
     }
     
     /* 요소별 높낮이 흔들림 방지를 위해 line-height 고정 및 flex align 정렬 */
@@ -43,7 +50,21 @@ $current_page = basename($_SERVER['PHP_SELF']);
     .common-header .nav-links a:hover, .common-header .nav-links a.active { color: #fff !important; }
     
     .common-header .nav-icons { display: flex !important; align-items: center !important; gap: 15px !important; }
-    .common-header .user-avatar { background: #00e5ff !important; color: #000 !important; font-weight: bold !important; border-radius: 20px !important; padding: 5px 15px !important; font-size: 0.9rem !important; display: flex !important; align-items: center !important; justify-content: center !important; line-height: 1.2 !important; }
+    .common-header .user-avatar { 
+        background: #00e5ff !important; 
+        color: #000 !important; 
+        font-weight: bold !important; 
+        border-radius: 20px !important; 
+        padding: 5px 15px !important; 
+        font-size: 0.9rem !important; 
+        display: inline-flex !important; 
+        align-items: center !important; 
+        justify-content: center !important; 
+        line-height: 1.2 !important; 
+        width: auto !important;         
+        height: auto !important;        
+        white-space: nowrap !important; 
+    }
     .common-header .nav-icons a { line-height: 1 !important; }
 </style>
 
