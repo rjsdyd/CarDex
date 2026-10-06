@@ -8,9 +8,19 @@ if (!isset($_SESSION['user_id'])) {
 }
 $userId = $_SESSION['user_id'];
 
-// 2. 삭제 처리 로직 (선택 삭제 & 개별 삭제)
+// 현재 접속한 유저가 관리자인지 권한 확인
+$role = 'user';
+try {
+    $roleStmt = $pdo->prepare("SELECT role FROM users WHERE user_id = ?");
+    $roleStmt->execute([$userId]);
+    $role = $roleStmt->fetchColumn();
+} catch (PDOException $e) {
+    // 컬럼이 아직 없으면 무시
+}
+
+// 2. 액션 처리 (차고 삭제 및 회원 탈퇴)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 다중(선택) 삭제
+    // 2-1. 다중(선택) 삭제
     if (isset($_POST['action']) && $_POST['action'] === 'bulk_delete' && !empty($_POST['car_ids'])) {
         $carIds = $_POST['car_ids'];
         $placeholders = implode(',', array_fill(0, count($carIds), '?'));
@@ -22,12 +32,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "<script>location.replace('mypage.php');</script>";
         exit;
     }
-    // 단일(개별) 삭제
+    // 2-2. 단일(개별) 삭제
     if (isset($_POST['action']) && $_POST['action'] === 'single_delete' && !empty($_POST['car_id'])) {
         $delStmt = $pdo->prepare("DELETE FROM wishlist WHERE user_id = ? AND car_id = ?");
         $delStmt->execute([$userId, $_POST['car_id']]);
         
         echo "<script>location.replace('mypage.php');</script>";
+        exit;
+    }
+    // 👇 2-3. 회원 탈퇴 처리
+    if (isset($_POST['action']) && $_POST['action'] === 'withdraw') {
+        // 찜 목록(wishlist) 데이터 먼저 삭제 후, 유저 데이터 삭제 (외래키 제약 조건 방지)
+        $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$userId]);
+        $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$userId]);
+        
+        // 세션(로그인 상태) 파기
+        session_destroy();
+        
+        echo "<script>alert('회원 탈퇴가 완료되었습니다. 그동안 CarDex를 이용해 주셔서 감사합니다.'); location.replace('index.php');</script>";
         exit;
     }
 }
@@ -40,19 +62,16 @@ $stats = [
     'top_fuel_percent' => 0
 ];
 
-// 총 저장 대수
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM wishlist WHERE user_id = ?");
 $countStmt->execute([$userId]);
 $stats['total'] = $countStmt->fetchColumn();
 
 if ($stats['total'] > 0) {
-    // 가장 선호하는 브랜드
     $brandStmt = $pdo->prepare("SELECT c.make, COUNT(*) as cnt FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? GROUP BY c.make ORDER BY cnt DESC LIMIT 1");
     $brandStmt->execute([$userId]);
     $brandRes = $brandStmt->fetch();
     if ($brandRes) $stats['top_brand'] = ucfirst($brandRes['make']);
 
-    // 관심 연료 타입
     $fuelStmt = $pdo->prepare("SELECT c.fuel_type, COUNT(*) as cnt FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? GROUP BY c.fuel_type ORDER BY cnt DESC LIMIT 1");
     $fuelStmt->execute([$userId]);
     $fuelRes = $fuelStmt->fetch();
@@ -62,15 +81,14 @@ if ($stats['total'] > 0) {
     }
 }
 
-// 👇 4. 정렬 방식 파라미터 받기 및 SQL 조건 동적 변경
+// 4. 정렬 방식 파라미터 받기 및 SQL 조건 동적 변경
 $currentSort = $_GET['sort'] ?? 'recent';
 
-$orderBySql = "ORDER BY w.created_at DESC"; // 기본값: 최근 저장순
+$orderBySql = "ORDER BY w.created_at DESC"; 
 if ($currentSort === 'newest') {
-    $orderBySql = "ORDER BY c.year DESC, w.created_at DESC"; // 최신 연식순
+    $orderBySql = "ORDER BY c.year DESC, w.created_at DESC"; 
 }
 
-// 저장된 차량 목록 가져오기 (적용된 정렬 기준 사용)
 $listStmt = $pdo->prepare("SELECT c.*, w.created_at as saved_at FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? $orderBySql");
 $listStmt->execute([$userId]);
 $savedCars = $listStmt->fetchAll();
@@ -86,7 +104,7 @@ $savedCars = $listStmt->fetchAll();
         a { text-decoration: none; color: inherit; }
         .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
 
-        .page-title { margin-bottom: 40px; }
+        .page-title-wrap { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .page-title h1 { font-size: 2rem; font-weight: 800; margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px; }
         .page-title p { color: #a0a0a0; margin: 0; font-size: 0.95rem; }
 
@@ -136,6 +154,10 @@ $savedCars = $listStmt->fetchAll();
         .c-class span { color: #dda0dd; margin-right: 5px; }
         
         .empty-state { grid-column: 1/-1; text-align: center; padding: 80px 20px; background: #1e1e24; border-radius: 16px; border: 1px dashed #333; color: #888; }
+        
+        /* 회원 탈퇴 버튼 스타일 */
+        .btn-withdraw { background: rgba(255, 75, 75, 0.05); border: 1px solid rgba(255, 75, 75, 0.2); color: #ff4b4b; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
+        .btn-withdraw:hover { background: rgba(255, 75, 75, 0.15); }
     </style>
 </head>
 <body>
@@ -143,9 +165,26 @@ $savedCars = $listStmt->fetchAll();
 <?php include 'header.php'; ?>
 
 <div class="container">
-    <div class="page-title">
-        <h1>내 차고 🚘</h1>
-        <p>관심 있는 차량을 모아보고, 통계를 확인하세요.</p>
+    <div class="page-title-wrap">
+        <div class="page-title">
+            <h1>내 차고 🚘</h1>
+            <p>관심 있는 차량을 모아보고, 통계를 확인하세요.</p>
+        </div>
+        
+        <!-- 권한에 따른 분기 처리 -->
+        <?php if ($role === 'admin'): ?>
+            <a href="admin.php" style="background: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.3); color: #ff4b4b; padding: 12px 24px; border-radius: 8px; font-weight: 800; font-size: 0.95rem; text-decoration: none; display: flex; align-items: center; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='#ff4b4b'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255, 75, 75, 0.1)'; this.style.color='#ff4b4b';">
+                👑 관리자 센터 접속
+            </a>
+        <?php else: ?>
+            <!-- 👇 일반 유저에게만 보이는 회원 탈퇴 폼 -->
+            <form method="POST" style="margin: 0;" onsubmit="return confirm('정말 회원 탈퇴를 진행하시겠습니까?\n저장된 차고 데이터가 모두 삭제되며 복구할 수 없습니다.');">
+                <input type="hidden" name="action" value="withdraw">
+                <button type="submit" class="btn-withdraw">
+                    계정 탈퇴
+                </button>
+            </form>
+        <?php endif; ?>
     </div>
 
     <!-- 통계 위젯 -->
@@ -167,7 +206,7 @@ $savedCars = $listStmt->fetchAll();
         </a>
     </div>
 
-    <!-- 폼 시작 -->
+    <!-- 차량 데이터 폼 시작 -->
     <form id="garageForm" method="POST" action="mypage.php">
         <input type="hidden" name="action" id="formAction" value="">
         <input type="hidden" name="car_id" id="singleDeleteId" value="">
@@ -180,7 +219,6 @@ $savedCars = $listStmt->fetchAll();
                 <button type="button" id="btnDeleteSelected" class="btn-delete-selected" onclick="submitBulkDelete()">선택 삭제</button>
             </div>
             
-            <!-- 👇 정렬 기능 추가 (자바스크립트로 URL 즉시 변경) -->
             <select class="sort-select" onchange="const urlParams = new URLSearchParams(window.location.search); urlParams.set('sort', this.value); window.location.search = urlParams.toString();">
                 <option value="recent" <?= $currentSort === 'recent' ? 'selected' : '' ?>>최근 저장순</option>
                 <option value="newest" <?= $currentSort === 'newest' ? 'selected' : '' ?>>최신 연식순</option>
@@ -196,7 +234,7 @@ $savedCars = $listStmt->fetchAll();
                     <div class="car-card">
                         <div class="card-top">
                             <input type="checkbox" name="car_ids[]" value="<?= $cid ?>" class="car-checkbox">
-                            <button type="button" class="btn-trash" onclick="submitSingleDelete(<?= $cid ?>)">🗑️</button>
+                            <button type="button" class="btn-trash" onclick="submitSingleDelete(<?= $cid ?>)">🗑️️</button>
                         </div>
                         
                         <div class="car-icon-circle">
