@@ -10,15 +10,21 @@ $brands = $stmt->fetchAll();
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <!-- 💡 [추가됨] 모바일 기기 필수 뷰포트 태그 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 전체 브랜드 목록</title>
     <style>
-        body { background-color: #121212; color: #fff; }
+        /* 💡 [추가됨] 모든 요소 화면 이탈 방지 */
+        * { box-sizing: border-box; }
+        
+        /* 💡 [추가됨] 최소 너비 320px 고정 및 스크롤 덜렁거림 방지 */
+        body { background-color: #121212; color: #fff; margin: 0; padding: 0; min-width: 320px; overflow-x: hidden; }
         a { text-decoration: none; color: inherit; }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; width: 100%; }
         
         .page-title { margin-bottom: 40px; }
         .page-title h1 { font-size: 2.2rem; font-weight: 800; color: #00e5ff; margin-bottom: 5px; }
-        .page-title p { color: #a0a0a0; font-size: 0.95rem; }
+        .page-title p { color: #a0a0a0; font-size: 0.95rem; margin: 0; }
 
         /* 브랜드 카드 그리드 (반응형 벤토 스타일) */
         .brands-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; margin-bottom: 60px; }
@@ -31,6 +37,22 @@ $brands = $stmt->fetchAll();
         .b-info { text-align: center; }
         .b-name { font-size: 1.2rem; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: block; }
         .b-count { font-size: 0.8rem; color: #888; background: #121212; padding: 4px 10px; border-radius: 12px; border: 1px solid #333; }
+
+        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
+        @media (max-width: 768px) {
+            .container { margin: 20px auto; }
+            .page-title { margin-bottom: 25px; }
+            .page-title h1 { font-size: 1.8rem; }
+            
+            /* 모바일에서는 스크롤이 너무 길어지지 않게 2열 바둑판 배열로 꽉 채움 */
+            .brands-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 40px; }
+            
+            /* 모바일 화면에 맞춰 카드 안쪽 여백과 아이콘 크기 축소 */
+            .brand-card { padding: 20px 10px; gap: 10px; }
+            .b-icon { width: 50px; height: 50px; font-size: 1.3rem; }
+            .b-name { font-size: 1rem; margin-bottom: 5px; }
+            .b-count { font-size: 0.7rem; padding: 3px 8px; }
+        }
     </style>
 </head>
 <body>

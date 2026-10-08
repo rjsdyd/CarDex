@@ -35,19 +35,25 @@ $recCars2 = array_slice($recCars, 4, 4);
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <!-- 💡 [추가됨] 모바일 기기에서 화면 비율을 맞추기 위한 필수 뷰포트 태그 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - VS 비교 매치업</title>
     <style>
-        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; }
+        /* 💡 [추가됨] 모든 요소가 화면을 뚫고 나가지 않도록 방어 */
+        * { box-sizing: border-box; }
+        
+        /* 💡 [추가됨] 최소 너비 320px 고정 및 스크롤 덜렁거림 방지 */
+        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; min-width: 320px; overflow-x: hidden; }
         a { text-decoration: none; color: inherit; }
-        .container { max-width: 1000px; margin: 60px auto; padding: 0 20px; }
+        .container { max-width: 1000px; margin: 60px auto; padding: 0 20px; width: 100%; }
 
         .page-header { text-align: center; margin-bottom: 50px; }
         .page-header h1 { font-size: 2.5rem; font-weight: 900; color: #00e5ff; margin-bottom: 10px; }
-        .page-header p { color: #a0a0a0; font-size: 1rem; }
+        .page-header p { color: #a0a0a0; font-size: 1rem; margin: 0; }
 
         .compare-container { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
         
-        .compare-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 40px; text-align: center; transition: 0.3s; display: flex; flex-direction: column; justify-content: center; min-height: 480px; }
+        .compare-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 40px; text-align: center; transition: 0.3s; display: flex; flex-direction: column; justify-content: center; min-height: 480px; width: 100%; }
         .compare-card:hover { border-color: #444; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
 
         /* 검색 폼 UI */
@@ -65,10 +71,8 @@ $recCars2 = array_slice($recCars, 4, 4);
         .rec-badge:hover { border-color: #00e5ff; color: #00e5ff; background: rgba(0,229,255,0.05); transform: translateY(-2px); }
 
         /* 제원 결과 렌더링 UI */
-        /* 👇 내부 요소들이 높이를 꽉 채우도록 설정 */
         .inner-wrap { display: flex; flex-direction: column; height: 100%; }
         
-        /* 👇 타이틀 영역의 최소 높이를 120px로 고정해서 글자가 길어져도 제원표 시작 위치를 맞춤 */
         .car-title-wrapper { min-height: 120px; display: flex; flex-direction: column; justify-content: center; margin-bottom: auto; }
         
         .c-brand { color: #00e5ff; font-weight: 800; font-size: 1rem; text-transform: uppercase; margin-bottom: 5px; }
@@ -83,6 +87,28 @@ $recCars2 = array_slice($recCars, 4, 4);
 
         .btn-change { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #ccc; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: block; transition: 0.2s; cursor: pointer; }
         .btn-change:hover { background: #fff; color: #000; border-color: #fff; }
+
+        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
+        @media (max-width: 768px) {
+            .container { margin: 30px auto; }
+            
+            .page-header { margin-bottom: 30px; }
+            .page-header h1 { font-size: 2rem; }
+            .page-header p { font-size: 0.9rem; }
+
+            /* 2열이던 비교 카드를 상하 1열로 변경 */
+            .compare-container { grid-template-columns: 1fr; gap: 20px; }
+            
+            /* 카드 내부 여백 및 높이 조정 */
+            .compare-card { padding: 30px 20px; min-height: auto; }
+            
+            /* 검색창 너비를 모바일에 맞춰 100%로 꽉 채움 */
+            .search-input { width: 100%; box-sizing: border-box; }
+            
+            /* 모바일에서는 타이틀 최소 높이 해제 */
+            .car-title-wrapper { min-height: auto; margin-bottom: 20px; }
+            .c-model { font-size: 1.8rem; }
+        }
 
     </style>
 </head>
@@ -102,7 +128,6 @@ $recCars2 = array_slice($recCars, 4, 4);
         <div class="compare-card">
             <?php if ($car1): ?>
                 <div class="inner-wrap">
-                    <!-- 👇 타이틀 영역을 묶어서 높이 고정 -->
                     <div class="car-title-wrapper">
                         <div class="c-brand"><?= htmlspecialchars($car1['make']) ?></div>
                         <div class="c-model"><?= htmlspecialchars($car1['model']) ?></div>
@@ -159,7 +184,6 @@ $recCars2 = array_slice($recCars, 4, 4);
         <div class="compare-card">
             <?php if ($car2): ?>
                 <div class="inner-wrap">
-                    <!-- 👇 타이틀 영역을 묶어서 높이 고정 -->
                     <div class="car-title-wrapper">
                         <div class="c-brand"><?= htmlspecialchars($car2['make']) ?></div>
                         <div class="c-model"><?= htmlspecialchars($car2['model']) ?></div>

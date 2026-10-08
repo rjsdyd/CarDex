@@ -57,11 +57,16 @@ $carCount = $pdo->query("SELECT COUNT(*) FROM cars")->fetchColumn();
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <!-- 💡 [추가됨] 모바일 기기 필수 뷰포트 태그 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 관리자 센터</title>
     <style>
-        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; }
+        /* 💡 [추가됨] 모든 요소 화면 이탈 방지 */
+        * { box-sizing: border-box; }
+        
+        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; min-width: 320px; overflow-x: hidden; }
         a { text-decoration: none; color: inherit; }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; width: 100%; }
 
         .page-header { margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
         .page-title h1 { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px; }
@@ -69,12 +74,19 @@ $carCount = $pdo->query("SELECT COUNT(*) FROM cars")->fetchColumn();
         
         .admin-grid { display: grid; grid-template-columns: 2.5fr 1fr; gap: 30px; }
         
-        .admin-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 30px; }
+        .admin-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 30px; width: 100%; overflow: hidden; }
         .card-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #333; padding-bottom: 15px; }
 
+        /* 💡 [추가됨] 테이블 가로 스크롤 래퍼 */
+        .table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; }
+        /* 스크롤바 디자인 */
+        .table-wrapper::-webkit-scrollbar { height: 6px; }
+        .table-wrapper::-webkit-scrollbar-track { background: #121212; border-radius: 4px; }
+        .table-wrapper::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
         /* 테이블 스타일 */
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #333; font-size: 0.95rem; vertical-align: middle; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; /* 모바일에서 표가 너무 찌그러지지 않도록 최소 너비 보장 */ }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #333; font-size: 0.95rem; vertical-align: middle; white-space: nowrap; }
         th { color: #888; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; }
         tr:hover td { background: rgba(255,255,255,0.02); }
         
@@ -84,7 +96,7 @@ $carCount = $pdo->query("SELECT COUNT(*) FROM cars")->fetchColumn();
 
         /* 액션 버튼 스타일 */
         .action-form { display: inline-flex; gap: 8px; margin: 0; }
-        .btn-action { padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; cursor: pointer; border: none; transition: 0.2s; color: #000; }
+        .btn-action { padding: 8px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; cursor: pointer; border: none; transition: 0.2s; color: #000; }
         .btn-promote { background: #00e5ff; }
         .btn-promote:hover { background: #00b3cc; }
         .btn-demote { background: #ffaa00; }
@@ -98,6 +110,19 @@ $carCount = $pdo->query("SELECT COUNT(*) FROM cars")->fetchColumn();
 
         .btn-seed { display: block; width: 100%; background: #00e5ff; color: #000; text-align: center; padding: 20px; border-radius: 12px; font-weight: 900; font-size: 1.1rem; border: none; cursor: pointer; transition: 0.2s; margin-top: 10px; box-sizing: border-box; display: flex; justify-content: center; align-items: center; gap: 10px; }
         .btn-seed:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0, 229, 255, 0.2); }
+
+        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
+        @media (max-width: 768px) {
+            .container { margin: 20px auto; }
+            .page-header { margin-bottom: 25px; }
+            .page-title h1 { font-size: 1.8rem; }
+            
+            /* 좌우 2단 분리를 상하 1열로 변경 */
+            .admin-grid { grid-template-columns: 1fr; gap: 20px; }
+            
+            /* 모바일 패딩 축소 */
+            .admin-card { padding: 20px 15px; }
+        }
     </style>
 </head>
 <body>
@@ -116,50 +141,54 @@ $carCount = $pdo->query("SELECT COUNT(*) FROM cars")->fetchColumn();
         <!-- 좌측: 유저 명단 -->
         <div class="admin-card">
             <div class="card-title">👥 가입자 명단 (총 <?= count($allUsers) ?>명)</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>NO.</th>
-                        <th>유저 닉네임</th>
-                        <th>권한 (ROLE)</th>
-                        <th>가입일시</th>
-                        <th>관리 (ACTION)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($allUsers as $index => $u): ?>
-                    <tr>
-                        <td style="color:#666; font-weight:bold;"><?= $index + 1 ?></td>
-                        <td style="font-weight:bold; font-size: 1.05rem;"><?= htmlspecialchars($u['username']) ?></td>
-                        <td>
-                            <span class="role-badge <?= ($u['role'] ?? 'user') === 'admin' ? 'role-admin' : 'role-user' ?>">
-                                <?= strtoupper($u['role'] ?? 'user') ?>
-                            </span>
-                        </td>
-                        <td style="color:#888; font-size: 0.85rem;"><?= date('Y-m-d H:i', strtotime($u['created_at'])) ?></td>
-                        <td>
-                            <?php if ($u['user_id'] != $_SESSION['user_id']): ?>
-                                <!-- 타인 계정일 경우 액션 버튼 노출 -->
-                                <form method="POST" class="action-form">
-                                    <input type="hidden" name="target_user_id" value="<?= $u['user_id'] ?>">
-                                    
-                                    <?php if (($u['role'] ?? 'user') !== 'admin'): ?>
-                                        <button type="submit" name="action" value="promote" class="btn-action btn-promote" onclick="return confirm('이 유저를 관리자로 승격하시겠습니까?');">승격</button>
-                                    <?php else: ?>
-                                        <button type="submit" name="action" value="demote" class="btn-action btn-demote" onclick="return confirm('이 유저의 관리자 권한을 회수하시겠습니까?');">권한해제</button>
-                                    <?php endif; ?>
-                                    
-                                    <button type="submit" name="action" value="delete" class="btn-action btn-delete" onclick="return confirm('정말 이 회원을 강제 탈퇴 처리하시겠습니까?\n이 회원이 차고에 저장한 데이터도 함께 삭제됩니다.');">강제탈퇴</button>
-                                </form>
-                            <?php else: ?>
-                                <!-- 내 계정일 경우 조작 방지 -->
-                                <span style="font-size: 0.75rem; color: #555; font-weight: bold; padding: 6px 0; display: inline-block;">내 계정 (조작불가)</span>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+            
+            <!-- 💡 [수정됨] 모바일 스크롤 대응을 위한 테이블 래퍼 추가 -->
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>NO.</th>
+                            <th>유저 닉네임</th>
+                            <th>권한 (ROLE)</th>
+                            <th>가입일시</th>
+                            <th>관리 (ACTION)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($allUsers as $index => $u): ?>
+                        <tr>
+                            <td style="color:#666; font-weight:bold;"><?= $index + 1 ?></td>
+                            <td style="font-weight:bold; font-size: 1.05rem;"><?= htmlspecialchars($u['username']) ?></td>
+                            <td>
+                                <span class="role-badge <?= ($u['role'] ?? 'user') === 'admin' ? 'role-admin' : 'role-user' ?>">
+                                    <?= strtoupper($u['role'] ?? 'user') ?>
+                                </span>
+                            </td>
+                            <td style="color:#888; font-size: 0.85rem;"><?= date('Y-m-d H:i', strtotime($u['created_at'])) ?></td>
+                            <td>
+                                <?php if ($u['user_id'] != $_SESSION['user_id']): ?>
+                                    <!-- 타인 계정일 경우 액션 버튼 노출 -->
+                                    <form method="POST" class="action-form">
+                                        <input type="hidden" name="target_user_id" value="<?= $u['user_id'] ?>">
+                                        
+                                        <?php if (($u['role'] ?? 'user') !== 'admin'): ?>
+                                            <button type="submit" name="action" value="promote" class="btn-action btn-promote" onclick="return confirm('이 유저를 관리자로 승격하시겠습니까?');">승격</button>
+                                        <?php else: ?>
+                                            <button type="submit" name="action" value="demote" class="btn-action btn-demote" onclick="return confirm('이 유저의 관리자 권한을 회수하시겠습니까?');">권한해제</button>
+                                        <?php endif; ?>
+                                        
+                                        <button type="submit" name="action" value="delete" class="btn-action btn-delete" onclick="return confirm('정말 이 회원을 강제 탈퇴 처리하시겠습니까?\n이 회원이 차고에 저장한 데이터도 함께 삭제됩니다.');">강제탈퇴</button>
+                                    </form>
+                                <?php else: ?>
+                                    <!-- 내 계정일 경우 조작 방지 -->
+                                    <span style="font-size: 0.75rem; color: #555; font-weight: bold; padding: 6px 0; display: inline-block;">내 계정 (조작불가)</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- 우측: 시스템 컨트롤 -->

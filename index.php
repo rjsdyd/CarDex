@@ -7,7 +7,7 @@ $cars = [];
 $totalRowsFormatted = '0';
 
 try {
-    // 1. Local DB Cache 전체 데이터 개수 구하기 (대시보드 우측 상단 카드용)
+    // 1. Local DB Cache 전체 데이터 개수 구하기
     $countStmt = $pdo->query("SELECT COUNT(*) FROM cars");
     $totalRows = $countStmt->fetchColumn();
     $totalRowsFormatted = number_format($totalRows);
@@ -65,7 +65,7 @@ try {
 } catch (\PDOException $e) {
     die("데이터베이스 에러: " . $e->getMessage());
 }
-// 👇 메인 화면 인기 차량 1대 불러오기
+// 메인 화면 인기 차량 1대 불러오기
 $popStmt = $pdo->query("SELECT * FROM cars ORDER BY created_at DESC LIMIT 1");
 $popularCar = $popStmt->fetch();
 
@@ -76,7 +76,7 @@ if ($popularCar && isset($_SESSION['user_id'])) {
     $isPopWished = (bool)$checkWish->fetch();
 }
 
-// 👇 메인 화면 자주 검색하는 브랜드 TOP 4 불러오기
+// 메인 화면 자주 검색하는 브랜드 TOP 4 불러오기
 $brandStmt = $pdo->query("SELECT make, COUNT(*) as cnt FROM cars GROUP BY make ORDER BY cnt DESC LIMIT 4");
 $popularBrands = $brandStmt->fetchAll();
 ?>
@@ -85,10 +85,63 @@ $popularBrands = $brandStmt->fetchAll();
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 글로벌 자동차 데이터 플랫폼</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=<?= time() ?>">
+    
+    <!-- 💡 [추가됨] 메인 화면 모바일 반응형 강제 덮어쓰기 CSS -->
+    <style>
+        @media (max-width: 768px) {
+            /* 1. 대시보드 벤토 그리드를 1열 세로 배열로 변경 */
+            .dashboard-container {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 20px !important;
+                padding: 20px !important;
+            }
+
+            /* 2. 메인 검색 카드 타이틀 크기 조절 */
+            .card-search h1 { font-size: 1.8rem !important; }
+            .card-search p { font-size: 0.9rem !important; margin-bottom: 20px !important; }
+
+            /* 3. 검색창 모바일 배열 (입력칸과 버튼을 세로로 쌓기) */
+            .search-box {
+                flex-direction: column !important;
+                gap: 10px !important;
+                background: transparent !important;
+                padding: 0 !important;
+            }
+            .search-input {
+                width: 100% !important;
+                border-radius: 12px !important;
+                background: rgba(255, 255, 255, 0.1) !important;
+                padding: 15px !important;
+                box-sizing: border-box !important;
+            }
+            .btn-search {
+                width: 100% !important;
+                border-radius: 12px !important;
+                padding: 15px !important;
+            }
+
+            /* 4. 인기 차종 텍스트 오버플로우 방지 */
+            .card-popular h2 { font-size: 2rem !important; word-break: keep-all; }
+
+            /* 5. 브랜드 리스트 가로 스크롤 허용 또는 줄바꿈 */
+            .brand-list-wrapper {
+                flex-wrap: wrap !important;
+                justify-content: flex-start !important;
+                gap: 15px !important;
+            }
+            
+            /* 검색 결과 영역 패딩 조절 */
+            .search-results-section {
+                padding: 20px 20px 60px 20px !important;
+            }
+            .search-results-section h2 { font-size: 1.2rem !important; }
+        }
+    </style>
 </head>
 <body>
 
@@ -111,7 +164,7 @@ $popularBrands = $brandStmt->fetchAll();
             <p>전 세계 400여 개 제조사의 실시간 제원을 검색하고 비교하세요.</p>
             
             <form class="search-box" method="GET" action="index.php" onsubmit="document.getElementById('loader').style.display='flex'">
-                <input type="text" name="make" class="search-input input-make" placeholder="Genesis" autocomplete="off">
+                <input type="text" name="make" class="search-input input-make" placeholder="브랜드 (예: Genesis)" autocomplete="off">
                 <input type="text" name="q" class="search-input input-model" placeholder="모델명 입력 (예: elantra)" value="<?= htmlspecialchars($searchTerm) ?>" required autocomplete="off">
                 <button type="submit" class="btn-search">🔍 검색</button>
             </form>
@@ -167,13 +220,15 @@ $popularBrands = $brandStmt->fetchAll();
             <p>선택한 차량의 스펙을<br>나란히 비교하세요</p>
         </a>
 
+        <!-- 5. 자주 검색하는 브랜드 카드 -->
         <div class="card" style="background: #1e1e24; border-radius: 16px; padding: 25px 30px; height: auto !important; min-height: 190px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
                 <h3 style="color: #a0a0a0; font-size: 0.95rem; font-weight: 600; margin: 0;">자주 검색하는 브랜드</h3>
                 <a href="brands.php" style="color: #00e5ff; font-size: 0.85rem; font-weight: bold; text-decoration: none;">더보기 →</a>
             </div>
             
-            <div style="display: flex; gap: 25px; align-items: center;">
+            <!-- 💡 [추가됨] brand-list-wrapper 클래스를 추가하여 모바일 제어 -->
+            <div class="brand-list-wrapper" style="display: flex; gap: 25px; align-items: center;">
                 <?php 
                 $brandMap = [
                     'hyundai' => ['icon' => 'H', 'name' => '현대'],
@@ -196,7 +251,6 @@ $popularBrands = $brandStmt->fetchAll();
                             $displayName = htmlspecialchars(ucfirst($b['make']));
                         }
                 ?>
-                    <!-- 👇 여기가 수정된 포인트! (클릭 시 비교함 대신 해당 브랜드 검색으로 이동) -->
                     <div onclick="location.href='index.php?q=<?= urlencode($b['make']) ?>'" 
                          style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px; transition: 0.2s;"
                          onmouseover="this.style.transform='translateY(-3px)'" 
@@ -211,7 +265,6 @@ $popularBrands = $brandStmt->fetchAll();
                 endif; 
                 ?>
                 
-                <!-- 전체보기 아이콘 -->
                 <div onclick="location.href='brands.php'" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-left: 5px; transition: 0.2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
                     <div style="width: 60px; height: 60px; background: #2a2a30; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.3rem;">
                         🚗

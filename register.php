@@ -39,11 +39,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <!-- 💡 [추가됨] 모바일 기기 필수 뷰포트 태그 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 회원가입</title>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* 💡 [추가됨] 박스 사이즈 유지 및 최소 너비 설정 */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
-        body { background-color: #121212; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        
+        /* height: 100vh 대신 min-height를 써서 모바일 키보드가 올라올 때 여백 확보, 모바일 좌우 패딩 추가 */
+        body { background-color: #121212; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; min-width: 320px; overflow-x: hidden; padding: 20px; }
         
         .auth-container { background: #1e1e24; padding: 40px; border-radius: 20px; width: 100%; max-width: 400px; border: 1px solid #333; text-align: center; }
         .auth-container h1 { font-size: 2rem; font-weight: 800; margin-bottom: 20px; color: #00e5ff; }
@@ -63,6 +68,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         .auth-links { margin-top: 25px; font-size: 0.9rem; color: #a0a0a0; }
         .auth-links a { color: #00e5ff; text-decoration: none; font-weight: bold; margin-left: 5px; }
+
+        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
+        @media (max-width: 768px) {
+            .auth-container { padding: 30px 20px; }
+            .auth-container h1 { font-size: 1.8rem; }
+            
+            /* 스마트폰에서 입력창과 버튼을 더 터치하기 쉽게 크기 조정 */
+            .form-group input { padding: 15px; font-size: 1rem; } 
+            .btn-auth { padding: 15px; font-size: 1.05rem; }
+        }
     </style>
 </head>
 <body>

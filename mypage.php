@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "<script>location.replace('mypage.php');</script>";
         exit;
     }
-    // 👇 2-3. 회원 탈퇴 처리
+    // 회원 탈퇴 처리
     if (isset($_POST['action']) && $_POST['action'] === 'withdraw') {
         // 찜 목록(wishlist) 데이터 먼저 삭제 후, 유저 데이터 삭제 (외래키 제약 조건 방지)
         $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$userId]);
@@ -98,11 +98,16 @@ $savedCars = $listStmt->fetchAll();
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <!-- 💡 [추가됨] 모바일 기기에서 화면 비율을 맞추기 위한 필수 뷰포트 태그 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 마이페이지</title>
     <style>
-        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; }
+        /* 💡 [추가됨] 모든 요소가 화면을 뚫고 나가지 않도록 방어 */
+        * { box-sizing: border-box; }
+        
+        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; min-width: 320px; overflow-x: hidden; }
         a { text-decoration: none; color: inherit; }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; width: 100%; }
 
         .page-title-wrap { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .page-title h1 { font-size: 2rem; font-weight: 800; margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px; }
@@ -158,6 +163,30 @@ $savedCars = $listStmt->fetchAll();
         /* 회원 탈퇴 버튼 스타일 */
         .btn-withdraw { background: rgba(255, 75, 75, 0.05); border: 1px solid rgba(255, 75, 75, 0.2); color: #ff4b4b; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
         .btn-withdraw:hover { background: rgba(255, 75, 75, 0.15); }
+
+        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
+        @media (max-width: 768px) {
+            .container { margin: 20px auto; padding: 0 15px; }
+            
+            /* 타이틀 영역 세로 정렬 및 버튼 풀사이즈 */
+            .page-title-wrap { flex-direction: column; align-items: flex-start; gap: 20px; }
+            .page-title-wrap > a, .page-title-wrap > form { width: 100%; }
+            .btn-withdraw { width: 100%; text-align: center; padding: 15px; font-size: 1rem; }
+
+            /* 통계 위젯을 2x2 바둑판으로 변경 */
+            .stats-grid { grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
+            .stat-card { padding: 20px 15px; }
+            .stat-card strong { font-size: 1.4rem; }
+            .link-card strong { font-size: 1rem; }
+
+            /* 툴바 세로 정렬 및 꽉 채우기 */
+            .toolbar { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .toolbar-left { width: 100%; justify-content: space-between; }
+            .sort-select { width: 100%; padding: 12px; }
+
+            /* 차량 카드 1열 정렬 보장 */
+            .car-grid { grid-template-columns: 1fr; gap: 15px; }
+        }
     </style>
 </head>
 <body>
@@ -173,11 +202,10 @@ $savedCars = $listStmt->fetchAll();
         
         <!-- 권한에 따른 분기 처리 -->
         <?php if ($role === 'admin'): ?>
-            <a href="admin.php" style="background: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.3); color: #ff4b4b; padding: 12px 24px; border-radius: 8px; font-weight: 800; font-size: 0.95rem; text-decoration: none; display: flex; align-items: center; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='#ff4b4b'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255, 75, 75, 0.1)'; this.style.color='#ff4b4b';">
+            <a href="admin.php" style="background: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.3); color: #ff4b4b; padding: 12px 24px; border-radius: 8px; font-weight: 800; font-size: 0.95rem; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='#ff4b4b'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255, 75, 75, 0.1)'; this.style.color='#ff4b4b';">
                 👑 관리자 센터 접속
             </a>
         <?php else: ?>
-            <!-- 👇 일반 유저에게만 보이는 회원 탈퇴 폼 -->
             <form method="POST" style="margin: 0;" onsubmit="return confirm('정말 회원 탈퇴를 진행하시겠습니까?\n저장된 차고 데이터가 모두 삭제되며 복구할 수 없습니다.');">
                 <input type="hidden" name="action" value="withdraw">
                 <button type="submit" class="btn-withdraw">
@@ -202,7 +230,7 @@ $savedCars = $listStmt->fetchAll();
             <strong><?= htmlspecialchars($stats['top_fuel']) ?> <?= $stats['total'] > 0 ? "<small>({$stats['top_fuel_percent']}%)</small>" : '' ?></strong>
         </div>
         <a href="compare.php" class="stat-card link-card">
-            <strong>비교함으로 이동 🔄</strong>
+            <strong>비교함 이동 🔄</strong>
         </a>
     </div>
 
@@ -234,7 +262,7 @@ $savedCars = $listStmt->fetchAll();
                     <div class="car-card">
                         <div class="card-top">
                             <input type="checkbox" name="car_ids[]" value="<?= $cid ?>" class="car-checkbox">
-                            <button type="button" class="btn-trash" onclick="submitSingleDelete(<?= $cid ?>)">🗑️️</button>
+                            <button type="button" class="btn-trash" onclick="submitSingleDelete(<?= $cid ?>)">🗑</button>
                         </div>
                         
                         <div class="car-icon-circle">
@@ -272,7 +300,6 @@ $savedCars = $listStmt->fetchAll();
     </form>
 </div>
 
-<!-- 체크박스 및 삭제 처리 스크립트 -->
 <script>
     const checkAll = document.getElementById('checkAll');
     const checkboxes = document.querySelectorAll('.car-checkbox');

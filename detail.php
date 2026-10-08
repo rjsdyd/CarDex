@@ -38,21 +38,24 @@ $competitors = $compStmt->fetchAll();
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - <?= htmlspecialchars(ucfirst($car['make']) . ' ' . ucfirst($car['model'])) ?></title>
     <style>
-        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; }
+        /* 💡 추가됨: 화면 잘림 방지용 기본 설정 */
+        * { box-sizing: border-box; }
+        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; min-width: 320px; overflow-x: hidden; }
+        
         a { text-decoration: none; color: inherit; }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; width: 100%; }
 
         /* 상단 네비게이션 & 타이틀 */
-        .breadcrumb { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+        .breadcrumb { color: #888; font-size: 0.85rem; margin-bottom: 20px; word-break: break-all; }
         .breadcrumb strong { color: #ccc; }
         
-        /* 👇 타이틀 영역 레이아웃 개선 (gap 추가 및 정렬) */
         .title-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; gap: 30px; }
-        .title-left { flex: 1; min-width: 0; /* 텍스트가 컨테이너를 넘지 않도록 방지 */ }
+        .title-left { flex: 1; min-width: 0; }
         
-        .badges { display: flex; gap: 10px; margin-bottom: 15px; }
+        .badges { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
         .badge { border: 1px solid #333; padding: 5px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
         .badge-year { background: #1e1e24; color: #ccc; }
         .badge-fuel { background: rgba(0, 255, 136, 0.1); color: #00ff88; border-color: rgba(0, 255, 136, 0.3); }
@@ -60,11 +63,10 @@ $competitors = $compStmt->fetchAll();
         .main-title { font-size: 3rem; font-weight: 900; margin: 0; text-transform: uppercase; word-wrap: break-word; line-height: 1.2; }
         .main-title span { color: #00e5ff; }
 
-        /* 👇 액션 버튼 영역 개선 (flex-shrink: 0 과 white-space: nowrap 추가) */
         .action-btns { display: flex; gap: 15px; flex-shrink: 0; }
-        .btn-compare { background: #121212; border: 1px solid #333; color: #ccc; padding: 12px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .btn-compare { background: #121212; border: 1px solid #333; color: #ccc; padding: 12px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
         .btn-compare:hover { border-color: #fff; color: #fff; }
-        .btn-wish { background: #00e5ff; border: none; color: #000; padding: 12px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .btn-wish { background: #00e5ff; border: none; color: #000; padding: 12px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
         .btn-wish:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,229,255,0.3); }
 
         /* 중앙 벤토 그리드 */
@@ -76,9 +78,10 @@ $competitors = $compStmt->fetchAll();
         .perf-desc { color: #888; font-size: 0.9rem; margin-bottom: 40px; }
         .perf-boxes { display: flex; gap: 15px; margin-top: auto; }
         .p-box { background: #121212; border: 1px solid #2a2a2f; padding: 15px; border-radius: 12px; display: flex; align-items: center; gap: 15px; flex: 1; }
-        .p-icon { width: 40px; height: 40px; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 1.2rem; }
+        .p-icon { width: 40px; height: 40px; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 1.2rem; flex-shrink: 0; }
+        .p-info { overflow: hidden; }
         .p-info span { display: block; font-size: 0.7rem; color: #666; margin-bottom: 3px; text-transform: uppercase; }
-        .p-info strong { font-size: 1rem; text-transform: capitalize; }
+        .p-info strong { font-size: 1rem; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 
         /* 카드 2: 파워트레인 */
         .card-header { font-size: 0.9rem; color: #a0a0a0; font-weight: 600; margin-bottom: 25px; display: flex; align-items: center; gap: 8px; }
@@ -98,18 +101,45 @@ $competitors = $compStmt->fetchAll();
         /* 하단 경쟁 차종 */
         .comp-section { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 30px; }
         .comp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .comp-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
-        .comp-link { color: #00e5ff; font-size: 0.85rem; font-weight: bold; }
+        .comp-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; line-height: 1.4; }
+        .comp-link { color: #00e5ff; font-size: 0.85rem; font-weight: bold; white-space: nowrap; }
         
         .comp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
         .comp-card { background: #121212; border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
         .comp-card:hover { border-color: #555; transform: translateY(-2px); }
         .comp-info span { display: block; font-size: 0.75rem; color: #888; margin-bottom: 3px; }
         .comp-info strong { font-size: 1.1rem; font-weight: 800; text-transform: capitalize; }
-        .comp-spec { text-align: right; }
+        .comp-spec { text-align: right; flex-shrink: 0; margin-left: 10px; }
         .comp-spec strong { display: block; font-size: 1rem; }
         .comp-spec span { font-size: 0.7rem; color: #666; text-transform: uppercase; }
 
+        /* 💡 추가됨: 모바일 반응형 CSS */
+        @media (max-width: 768px) {
+            /* 컨테이너 패딩 조절 */
+            .container { padding: 0 15px; margin: 20px auto; }
+
+            /* 타이틀 영역 세로 정렬 및 폰트 크기 축소 */
+            .title-section { flex-direction: column; align-items: flex-start; gap: 20px; margin-bottom: 20px; }
+            .main-title { font-size: 2.2rem; }
+            
+            /* 액션 버튼들을 가로 꽉 차게 세로로 나열 (글씨 잘림 방지) */
+            .action-btns { width: 100%; flex-direction: column; gap: 10px; }
+            .btn-compare, .btn-wish { width: 100%; padding: 15px; font-size: 1rem; }
+
+            /* 벤토 그리드 1열 세로 배열 */
+            .bento-grid { grid-template-columns: 1fr; gap: 15px; }
+            .bento-card { padding: 20px; }
+            
+            /* 퍼포먼스 박스 내부 1열 배열 */
+            .perf-boxes { flex-direction: column; }
+            .p-box { width: 100%; }
+
+            /* 하단 경쟁 차종 영역 세로 정렬 */
+            .comp-section { padding: 20px; }
+            .comp-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .comp-grid { grid-template-columns: 1fr; gap: 15px; }
+            .comp-card { padding: 15px; }
+        }
     </style>
 </head>
 <body>
@@ -122,7 +152,6 @@ $competitors = $compStmt->fetchAll();
     </div>
 
     <div class="title-section">
-        <!-- 타이틀을 묶는 div에 title-left 클래스 추가 -->
         <div class="title-left">
             <div class="badges">
                 <div class="badge badge-year"><?= htmlspecialchars($car['year']) ?></div>

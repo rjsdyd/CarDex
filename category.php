@@ -11,12 +11,11 @@ $currentCountry = $_GET['country'] ?? 'ALL';
 $currentPowertrain = $_GET['powertrain'] ?? 'all';
 $currentBodyStyle = $_GET['body_style'] ?? 'all'; 
 $currentBrand = $_GET['brand'] ?? ''; 
-$currentSort = $_GET['sort'] ?? 'popular'; // 👇 정렬 파라미터 추가!
+$currentSort = $_GET['sort'] ?? 'popular';
 
 $brandParam = $currentBrand ? '&brand=' . urlencode($currentBrand) : '';
 $sortParam = '&sort=' . urlencode($currentSort);
 
-// 국가별 대표 브랜드 설정
 $countryBrands = [
     'ALL' => [], 
     'DE' => ['bmw', 'mercedes-benz', 'audi', 'porsche', 'volkswagen'],
@@ -32,10 +31,8 @@ $countryNames = [
 $targetBrands = $countryBrands[$currentCountry] ?? [];
 $displayBrands = $currentCountry === 'ALL' ? ['bmw', 'hyundai', 'tesla', 'toyota', 'porsche', 'genesis'] : $targetBrands;
 
-// 3. 필터 조건에 맞는 차량들 DB에서 불러오기
 $categoryCars = [];
 
-// 파워트레인 조건식
 $powertrainSql = "";
 if ($currentPowertrain === 'electric') {
     $powertrainSql = " AND LOWER(fuel_type) = 'electricity'";
@@ -45,7 +42,6 @@ if ($currentPowertrain === 'electric') {
     $powertrainSql = " AND LOWER(fuel_type) != 'electricity' AND LOWER(fuel_type) NOT LIKE '%hybrid%'";
 }
 
-// 차급별(Body Style) 조건식
 $bodyStyleSql = "";
 if ($currentBodyStyle === 'suv') {
     $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%sport utility%' OR LOWER(vehicle_class) LIKE '%suv%')";
@@ -55,13 +51,11 @@ if ($currentBodyStyle === 'suv') {
     $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%two seater%' OR LOWER(vehicle_class) LIKE '%sports%')";
 }
 
-// 👇 정렬 조건식 (인기순은 기본 DB 등록순, 최신 연식순은 year 기준 내림차순)
 $orderBySql = " ORDER BY created_at DESC";
 if ($currentSort === 'newest') {
     $orderBySql = " ORDER BY year DESC, created_at DESC";
 }
 
-// 👇 LIMIT 12를 제거하여 전체 데이터가 출력되도록 수정
 if ($currentBrand) {
     $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(make) = ? $powertrainSql $bodyStyleSql $orderBySql");
     $stmt->execute([strtolower($currentBrand)]);
@@ -87,49 +81,45 @@ if ($currentBrand) {
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 카테고리 탐색</title>
     <style>
-        body { background-color: #121212; color: #fff; }
+        * { box-sizing: border-box; }
+        body { background-color: #121212; color: #fff; min-width: 320px; overflow-x: hidden; margin: 0; padding: 0; }
         a { text-decoration: none; color: inherit; }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; width: 100%; }
 
-        /* 상단 타이틀 영역 */
         .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; }
         .page-title h1 { font-size: 2.2rem; font-weight: 800; color: #00e5ff; margin-bottom: 5px; }
-        .page-title p { color: #a0a0a0; font-size: 0.95rem; }
+        .page-title p { color: #a0a0a0; font-size: 0.95rem; margin: 0; }
         .db-badge { background: #1e1e24; border: 1px solid #333; padding: 8px 15px; border-radius: 8px; font-size: 0.85rem; font-weight: bold; display: flex; align-items: center; gap: 8px; }
         .db-badge span { color: #00ff88; font-size: 1.2rem; }
 
-        /* 필터 벤토(Bento) 그리드 */
         .filter-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-        .filter-card { background: #1e1e24; border-radius: 16px; border: 1px solid #2a2a2f; padding: 25px; }
+        .filter-card { background: #1e1e24; border-radius: 16px; border: 1px solid #2a2a2f; padding: 25px; width: 100%; }
         .filter-title { font-size: 0.9rem; color: #a0a0a0; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
 
-        /* 1. 국가별 그리드 */
-        .country-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .country-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; }
         .country-btn { background: #121212; border: 1px solid #333; border-radius: 12px; padding: 20px; text-align: center; display: block; transition: 0.2s; }
         .country-btn:hover { border-color: #555; }
         .country-btn.active { border-color: rgba(0, 229, 255, 0.5); background: rgba(0, 229, 255, 0.05); }
         .country-btn strong { display: block; font-size: 1.4rem; font-weight: 800; margin-bottom: 5px; }
         .country-btn span { display: block; font-size: 0.8rem; color: #888; }
 
-        /* 2 & 3. 파워트레인 / 차급별 버튼 리스트 */
-        .list-btn-group { display: flex; flex-direction: column; gap: 12px; }
+        .list-btn-group { display: flex; flex-direction: column; gap: 12px; width: 100%; }
         .list-btn { background: #121212; border: 1px solid #333; border-radius: 12px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: 0.2s; font-weight: 600; font-size: 0.95rem; }
         .list-btn:hover { border-color: #555; transform: translateY(-2px); }
         .icon-wrap { display: flex; align-items: center; gap: 10px; }
         .list-btn.active { border-color: #00e5ff; background: rgba(0, 229, 255, 0.05); }
 
-        /* 하단 브랜드 바 */
-        .brand-bar { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 20px 30px; display: flex; align-items: center; gap: 20px; margin-bottom: 40px; }
-        .brand-bar-title { font-size: 0.85rem; color: #666; font-weight: 800; letter-spacing: 1px; }
+        .brand-bar { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 20px 30px; display: flex; align-items: center; gap: 20px; margin-bottom: 40px; width: 100%; }
+        .brand-bar-title { font-size: 0.85rem; color: #666; font-weight: 800; letter-spacing: 1px; min-width: max-content; }
         .brand-icons { display: flex; gap: 15px; }
         
         .b-icon { width: 45px; height: 45px; background: #121212; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; font-size: 1rem; border: 1px solid #333; color: #ccc; transition: 0.3s; cursor: pointer; }
         .b-icon:hover { border-color: #00e5ff; color: #00e5ff; transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0, 229, 255, 0.15); }
         .b-icon.active-brand { border-color: #00e5ff; color: #00e5ff; background: rgba(0, 229, 255, 0.1); transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0, 229, 255, 0.15); }
 
-        /* 차량 리스트 결과 영역 */
         .section-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
         .section-header h2 { font-size: 1.3rem; margin: 0; display: flex; align-items: center; gap: 10px; }
         .sort-select { background: #1e1e24; color: #fff; border: 1px solid #333; padding: 8px 15px; border-radius: 8px; outline: none; cursor: pointer; transition: 0.2s; }
@@ -149,6 +139,44 @@ if ($currentBrand) {
 
         .btn-detail { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #ccc; text-align: center; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: 0.2s; cursor: pointer; display: block; }
         .btn-detail:hover { background: #fff; color: #000; border-color: #fff; }
+
+        /* 💡 수정됨: 잘림 방지를 위해 가로 스크롤 대신 '2열 그리드(바둑판)' 방식으로 완벽하게 구겨 넣음 */
+        @media (max-width: 768px) {
+            .page-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .db-badge { width: 100%; justify-content: center; }
+
+            .filter-grid { grid-template-columns: 1fr; gap: 15px; }
+            .filter-card { padding: 20px 15px; }
+
+            /* 국가 그리드: 2열 구조 유지 */
+            .country-grid { gap: 10px; }
+            .country-btn { padding: 15px 5px; }
+
+            /* 💡 파워트레인 / 차급 리스트: 2열 그리드로 꽉 채우고 위아래 정렬로 공간 확보 */
+            .list-btn-group { 
+                display: grid !important; 
+                grid-template-columns: 1fr 1fr !important; 
+                gap: 10px; 
+            }
+            .list-btn { 
+                flex-direction: column; /* 아이콘과 글씨를 위아래로 배치 */
+                justify-content: center; 
+                text-align: center; 
+                gap: 6px; 
+                padding: 15px 10px; 
+                font-size: 0.85rem; 
+            }
+            .icon-wrap { flex-direction: column; gap: 4px; }
+
+            /* 💡 브랜드 바: 스크롤 대신 여러 줄로 줄바꿈(wrap) 처리 */
+            .brand-bar { flex-direction: column; align-items: flex-start; padding: 20px 15px; gap: 15px; }
+            .brand-icons { flex-wrap: wrap; gap: 10px; justify-content: flex-start; width: 100%; }
+
+            .section-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .sort-select { width: 100%; padding: 12px; }
+
+            .car-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -168,11 +196,11 @@ if ($currentBrand) {
 
     <!-- 카테고리 필터 영역 -->
     <div class="filter-grid">
-        <!-- 1. 생산 국가별 (필터 이동 시 정렬 상태도 유지 $sortParam) -->
+        <!-- 1. 생산 국가별 (ALL 버튼은 2칸 차지) -->
         <div class="filter-card">
             <div class="filter-title">🌍 생산 국가별 (Heritage & Country)</div>
             <div class="country-grid">
-                <a href="?country=ALL&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'ALL' ? 'active' : '' ?>" style="grid-column: 1 / -1; display: flex; justify-content: center; align-items: baseline; gap: 8px; padding: 15px;">
+                <a href="?country=ALL&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'ALL' ? 'active' : '' ?>" style="grid-column: 1 / -1; display: flex; justify-content: center; align-items: baseline; gap: 8px;">
                     <strong style="margin-bottom: 0;">ALL</strong><span>Global</span>
                 </a>
                 <a href="?country=DE&powertrain=<?= $currentPowertrain ?>&body_style=<?= $currentBodyStyle ?><?= $sortParam ?>" class="country-btn <?= $currentCountry == 'DE' ? 'active' : '' ?>">
@@ -214,16 +242,16 @@ if ($currentBrand) {
             <div class="filter-title">🚙 차급별 (Body Style)</div>
             <div class="list-btn-group">
                 <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=all<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'all' ? 'active' : '' ?>">
-                    <span>All Styles</span> <span style="font-size:1.2rem;">🔍</span>
+                    <span style="font-size:1.2rem;">🔍</span> <span>All Styles</span>
                 </a>
                 <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=suv<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'suv' ? 'active' : '' ?>">
-                    <span>SUV</span> <span style="font-size:1.2rem; filter: grayscale(1);">🚙</span>
+                    <span style="font-size:1.2rem; filter: grayscale(1);">🚙</span> <span>SUV</span>
                 </a>
                 <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=sedan<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'sedan' ? 'active' : '' ?>">
-                    <span>Sedan</span> <span style="font-size:1.2rem; filter: grayscale(1);">🚗</span>
+                    <span style="font-size:1.2rem; filter: grayscale(1);">🚗</span> <span>Sedan</span>
                 </a>
                 <a href="?country=<?= $currentCountry ?>&powertrain=<?= $currentPowertrain ?>&body_style=sports<?= $brandParam ?><?= $sortParam ?>" class="list-btn <?= $currentBodyStyle == 'sports' ? 'active' : '' ?>">
-                    <span>Sports</span> <span style="font-size:1.2rem; filter: grayscale(1);">🏎️</span>
+                    <span style="font-size:1.2rem; filter: grayscale(1);">🏎️</span> <span>Sports</span>
                 </a>
             </div>
         </div>
@@ -246,8 +274,6 @@ if ($currentBrand) {
     <!-- 차량 리스트 영역 -->
     <div class="section-header">
         <h2><?= $sectionTitle ?> <span style="font-size: 0.8rem; color:#666; font-weight:normal;">총 <?= count($categoryCars) ?>건</span></h2>
-        
-        <!-- 👇 JavaScript로 URL 파라미터를 조작하여 즉시 정렬되도록 구현 -->
         <select class="sort-select" onchange="const urlParams = new URLSearchParams(window.location.search); urlParams.set('sort', this.value); window.location.search = urlParams.toString();">
             <option value="popular" <?= $currentSort === 'popular' ? 'selected' : '' ?>>인기순 정렬</option>
             <option value="newest" <?= $currentSort === 'newest' ? 'selected' : '' ?>>최신 연식순</option>
@@ -285,7 +311,6 @@ if ($currentBrand) {
     </div>
 </div>
 <script>
-        // 새로고침이나 정렬 변경 시 스크롤 위치 유지
         window.addEventListener('beforeunload', function() {
             sessionStorage.setItem('scrollPosition', window.scrollY);
         });
