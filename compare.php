@@ -2,11 +2,9 @@
 session_start();
 require_once 'db.php';
 
-// 1. 좌/우 검색어 받기
 $search1 = $_GET['search1'] ?? '';
 $search2 = $_GET['search2'] ?? '';
 
-// 2. 차량 정보 가져오는 함수
 function getCarData($pdo, $term) {
     if (!$term) return null;
     
@@ -14,7 +12,7 @@ function getCarData($pdo, $term) {
     $stmt->execute([$term, $term]);
     $car = $stmt->fetch();
     
-    if(!$car) {
+    if (!$car) {
         $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(model) LIKE ? ORDER BY year DESC LIMIT 1");
         $stmt->execute(['%' . strtolower($term) . '%']);
         $car = $stmt->fetch();
@@ -25,7 +23,6 @@ function getCarData($pdo, $term) {
 $car1 = getCarData($pdo, $search1);
 $car2 = getCarData($pdo, $search2);
 
-// 3. 추천 차량 8대 랜덤 추출
 $recStmt = $pdo->query("SELECT make, model FROM cars ORDER BY RAND() LIMIT 8");
 $recCars = $recStmt->fetchAll();
 $recCars1 = array_slice($recCars, 0, 4);
@@ -35,81 +32,286 @@ $recCars2 = array_slice($recCars, 4, 4);
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <!-- 💡 [추가됨] 모바일 기기에서 화면 비율을 맞추기 위한 필수 뷰포트 태그 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - VS 비교 매치업</title>
     <style>
-        /* 💡 [추가됨] 모든 요소가 화면을 뚫고 나가지 않도록 방어 */
-        * { box-sizing: border-box; }
+        * { 
+            box-sizing: border-box; 
+        }
         
-        /* 💡 [추가됨] 최소 너비 320px 고정 및 스크롤 덜렁거림 방지 */
-        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; min-width: 320px; overflow-x: hidden; }
-        a { text-decoration: none; color: inherit; }
-        .container { max-width: 1000px; margin: 60px auto; padding: 0 20px; width: 100%; }
-
-        .page-header { text-align: center; margin-bottom: 50px; }
-        .page-header h1 { font-size: 2.5rem; font-weight: 900; color: #00e5ff; margin-bottom: 10px; }
-        .page-header p { color: #a0a0a0; font-size: 1rem; margin: 0; }
-
-        .compare-container { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-        
-        .compare-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 40px; text-align: center; transition: 0.3s; display: flex; flex-direction: column; justify-content: center; min-height: 480px; width: 100%; }
-        .compare-card:hover { border-color: #444; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-
-        /* 검색 폼 UI */
-        .search-input { width: 80%; padding: 15px 20px; border-radius: 30px; border: 1px solid #333; background: #121212; color: #fff; font-size: 1rem; margin-bottom: 20px; outline: none; text-align: center; }
-        .search-input:focus { border-color: #00e5ff; }
-        .btn-search { background: #00e5ff; color: #000; border: none; padding: 12px 30px; border-radius: 20px; font-weight: 800; cursor: pointer; transition: 0.2s; font-size: 1rem; }
-        .btn-search:hover { transform: scale(1.05); }
-        .empty-text { color: #666; margin-top: 20px; font-size: 0.9rem; }
-
-        /* 추천 차량 뱃지 UI */
-        .rec-section { margin-top: 40px; border-top: 1px dashed #333; padding-top: 25px; }
-        .rec-title { color: #888; font-size: 0.85rem; margin-bottom: 15px; font-weight: 600; }
-        .rec-badges { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-        .rec-badge { background: #121212; border: 1px solid #333; padding: 10px 15px; border-radius: 20px; color: #ccc; font-size: 0.85rem; cursor: pointer; transition: 0.2s; font-weight: 500; }
-        .rec-badge:hover { border-color: #00e5ff; color: #00e5ff; background: rgba(0,229,255,0.05); transform: translateY(-2px); }
-
-        /* 제원 결과 렌더링 UI */
-        .inner-wrap { display: flex; flex-direction: column; height: 100%; }
-        
-        .car-title-wrapper { min-height: 120px; display: flex; flex-direction: column; justify-content: center; margin-bottom: auto; }
-        
-        .c-brand { color: #00e5ff; font-weight: 800; font-size: 1rem; text-transform: uppercase; margin-bottom: 5px; }
-        .c-model { font-size: 2.2rem; font-weight: 900; margin-bottom: 5px; text-transform: capitalize; line-height: 1.2; }
-        .c-year { font-size: 1rem; color: #888; margin-bottom: 0; }
-        
-        .spec-list { text-align: left; background: #121212; border: 1px solid #2a2a2f; border-radius: 12px; padding: 20px; margin-top: 20px; margin-bottom: 20px; }
-        .spec-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #222; }
-        .spec-row:last-child { border-bottom: none; }
-        .spec-label { color: #888; font-size: 0.9rem; }
-        .spec-value { color: #fff; font-weight: 700; font-size: 1rem; text-transform: capitalize; text-align: right; }
-
-        .btn-change { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #ccc; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: block; transition: 0.2s; cursor: pointer; }
-        .btn-change:hover { background: #fff; color: #000; border-color: #fff; }
-
-        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
-        @media (max-width: 768px) {
-            .container { margin: 30px auto; }
-            
-            .page-header { margin-bottom: 30px; }
-            .page-header h1 { font-size: 2rem; }
-            .page-header p { font-size: 0.9rem; }
-
-            /* 2열이던 비교 카드를 상하 1열로 변경 */
-            .compare-container { grid-template-columns: 1fr; gap: 20px; }
-            
-            /* 카드 내부 여백 및 높이 조정 */
-            .compare-card { padding: 30px 20px; min-height: auto; }
-            
-            /* 검색창 너비를 모바일에 맞춰 100%로 꽉 채움 */
-            .search-input { width: 100%; box-sizing: border-box; }
-            
-            /* 모바일에서는 타이틀 최소 높이 해제 */
-            .car-title-wrapper { min-height: auto; margin-bottom: 20px; }
-            .c-model { font-size: 1.8rem; }
+        body { 
+            background-color: #121212; 
+            color: #fff; 
+            font-family: 'Noto Sans KR', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            min-width: 320px; 
+            overflow-x: hidden; 
         }
 
+        a { 
+            text-decoration: none; 
+            color: inherit; 
+        }
+
+        .container { 
+            max-width: 1000px; 
+            margin: 60px auto; 
+            padding: 0 20px; 
+            width: 100%; 
+        }
+
+        .page-header { 
+            text-align: center; 
+            margin-bottom: 50px; 
+        }
+
+        .page-header h1 { 
+            font-size: 2.5rem; 
+            font-weight: 900; 
+            color: #00e5ff; 
+            margin-bottom: 10px; 
+        }
+
+        .page-header p { 
+            color: #a0a0a0; 
+            font-size: 1rem; 
+            margin: 0; 
+        }
+
+        .compare-container { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 30px; 
+        }
+        
+        .compare-card { 
+            background: #1e1e24; 
+            border: 1px solid #2a2a2f; 
+            border-radius: 16px; 
+            padding: 40px; 
+            text-align: center; 
+            transition: 0.3s; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            min-height: 480px; 
+            width: 100%; 
+        }
+
+        .compare-card:hover { 
+            border-color: #444; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+        }
+
+        .search-input { 
+            width: 80%; 
+            padding: 15px 20px; 
+            border-radius: 30px; 
+            border: 1px solid #333; 
+            background: #121212; 
+            color: #fff; 
+            font-size: 1rem; 
+            margin-bottom: 20px; 
+            outline: none; 
+            text-align: center; 
+        }
+
+        .search-input:focus { 
+            border-color: #00e5ff; 
+        }
+
+        .btn-search { 
+            background: #00e5ff; 
+            color: #000; 
+            border: none; 
+            padding: 12px 30px; 
+            border-radius: 20px; 
+            font-weight: 800; 
+            cursor: pointer; 
+            transition: 0.2s; 
+            font-size: 1rem; 
+        }
+
+        .btn-search:hover { 
+            transform: scale(1.05); 
+        }
+
+        .empty-text { 
+            color: #666; 
+            margin-top: 20px; 
+            font-size: 0.9rem; 
+        }
+
+        .rec-section { 
+            margin-top: 40px; 
+            border-top: 1px dashed #333; 
+            padding-top: 25px; 
+        }
+
+        .rec-title { 
+            color: #888; 
+            font-size: 0.85rem; 
+            margin-bottom: 15px; 
+            font-weight: 600; 
+        }
+
+        .rec-badges { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 10px; 
+            justify-content: center; 
+        }
+
+        .rec-badge { 
+            background: #121212; 
+            border: 1px solid #333; 
+            padding: 10px 15px; 
+            border-radius: 20px; 
+            color: #ccc; 
+            font-size: 0.85rem; 
+            cursor: pointer; 
+            transition: 0.2s; 
+            font-weight: 500; 
+        }
+
+        .rec-badge:hover { 
+            border-color: #00e5ff; 
+            color: #00e5ff; 
+            background: rgba(0,229,255,0.05); 
+            transform: translateY(-2px); 
+        }
+
+        .inner-wrap { 
+            display: flex; 
+            flex-direction: column; 
+            height: 100%; 
+        }
+        
+        .car-title-wrapper { 
+            min-height: 120px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            margin-bottom: auto; 
+        }
+        
+        .c-brand { 
+            color: #00e5ff; 
+            font-weight: 800; 
+            font-size: 1rem; 
+            text-transform: uppercase; 
+            margin-bottom: 5px; 
+        }
+
+        .c-model { 
+            font-size: 2.2rem; 
+            font-weight: 900; 
+            margin-bottom: 5px; 
+            text-transform: capitalize; 
+            line-height: 1.2; 
+        }
+
+        .c-year { 
+            font-size: 1rem; 
+            color: #888; 
+            margin-bottom: 0; 
+        }
+        
+        .spec-list { 
+            text-align: left; 
+            background: #121212; 
+            border: 1px solid #2a2a2f; 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-top: 20px; 
+            margin-bottom: 20px; 
+        }
+
+        .spec-row { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 12px 0; 
+            border-bottom: 1px solid #222; 
+        }
+
+        .spec-row:last-child { 
+            border-bottom: none; 
+        }
+
+        .spec-label { 
+            color: #888; 
+            font-size: 0.9rem; 
+        }
+
+        .spec-value { 
+            color: #fff; 
+            font-weight: 700; 
+            font-size: 1rem; 
+            text-transform: capitalize; 
+            text-align: right; 
+        }
+
+        .btn-change { 
+            background: rgba(255,255,255,0.05); 
+            border: 1px solid #333; 
+            color: #ccc; 
+            padding: 12px; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            font-size: 0.9rem; 
+            display: block; 
+            transition: 0.2s; 
+            cursor: pointer; 
+        }
+
+        .btn-change:hover { 
+            background: #fff; 
+            color: #000; 
+            border-color: #fff; 
+        }
+
+        @media (max-width: 768px) {
+            .container { 
+                margin: 30px auto; 
+            }
+            
+            .page-header { 
+                margin-bottom: 30px; 
+            }
+
+            .page-header h1 { 
+                font-size: 2rem; 
+            }
+
+            .page-header p { 
+                font-size: 0.9rem; 
+            }
+
+            .compare-container { 
+                grid-template-columns: 1fr; 
+                gap: 20px; 
+            }
+            
+            .compare-card { 
+                padding: 30px 20px; 
+                min-height: auto; 
+            }
+            
+            .search-input { 
+                width: 100%; 
+                box-sizing: border-box; 
+            }
+            
+            .car-title-wrapper { 
+                min-height: auto; 
+                margin-bottom: 20px; 
+            }
+
+            .c-model { 
+                font-size: 1.8rem; 
+            }
+        }
     </style>
 </head>
 <body>
@@ -124,7 +326,6 @@ $recCars2 = array_slice($recCars, 4, 4);
 
     <div class="compare-container">
         
-        <!-- ================= 왼쪽 차량 (Card 1) ================= -->
         <div class="compare-card">
             <?php if ($car1): ?>
                 <div class="inner-wrap">
@@ -157,7 +358,7 @@ $recCars2 = array_slice($recCars, 4, 4);
                         </div>
                     </div>
                     
-                    <a href="compare.php?search2=<?= urlencode($search2) ?>" class="btn-change">🔄 다른 차량 선택</a>
+                    <a href="compare.php?search2=<?= urlencode($search2) ?>" class="btn-change">다른 차량 선택</a>
                 </div>
             <?php else: ?>
                 <form method="GET" id="form1">
@@ -168,7 +369,7 @@ $recCars2 = array_slice($recCars, 4, 4);
                 </form>
                 
                 <div class="rec-section">
-                    <div class="rec-title">💡 이 차량은 어떠세요?</div>
+                    <div class="rec-title">이 차량은 어떠세요?</div>
                     <div class="rec-badges">
                         <?php foreach($recCars1 as $rc): ?>
                             <div class="rec-badge" onclick="document.getElementById('input1').value='<?= $rc['model'] ?>'; document.getElementById('form1').submit();">
@@ -180,7 +381,6 @@ $recCars2 = array_slice($recCars, 4, 4);
             <?php endif; ?>
         </div>
 
-        <!-- ================= 오른쪽 차량 (Card 2) ================= -->
         <div class="compare-card">
             <?php if ($car2): ?>
                 <div class="inner-wrap">
@@ -213,7 +413,7 @@ $recCars2 = array_slice($recCars, 4, 4);
                         </div>
                     </div>
                     
-                    <a href="compare.php?search1=<?= urlencode($search1) ?>" class="btn-change">🔄 다른 차량 선택</a>
+                    <a href="compare.php?search1=<?= urlencode($search1) ?>" class="btn-change">다른 차량 선택</a>
                 </div>
             <?php else: ?>
                 <form method="GET" id="form2">
@@ -224,7 +424,7 @@ $recCars2 = array_slice($recCars, 4, 4);
                 </form>
                 
                 <div class="rec-section">
-                    <div class="rec-title">💡 이 차량은 어떠세요?</div>
+                    <div class="rec-title">이 차량은 어떠세요?</div>
                     <div class="rec-badges">
                         <?php foreach($recCars2 as $rc): ?>
                             <div class="rec-badge" onclick="document.getElementById('input2').value='<?= $rc['model'] ?>'; document.getElementById('form2').submit();">
