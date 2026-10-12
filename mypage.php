@@ -2,25 +2,20 @@
 session_start();
 require_once 'db.php';
 
-// 1. 로그인 체크
 if (!isset($_SESSION['user_id'])) {
     die("<script>alert('로그인이 필요한 서비스입니다.'); location.href='login.php';</script>");
 }
 $userId = $_SESSION['user_id'];
 
-// 현재 접속한 유저가 관리자인지 권한 확인
 $role = 'user';
 try {
     $roleStmt = $pdo->prepare("SELECT role FROM users WHERE user_id = ?");
     $roleStmt->execute([$userId]);
     $role = $roleStmt->fetchColumn();
 } catch (PDOException $e) {
-    // 컬럼이 아직 없으면 무시
 }
 
-// 2. 액션 처리 (차고 삭제 및 회원 탈퇴)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 2-1. 다중(선택) 삭제
     if (isset($_POST['action']) && $_POST['action'] === 'bulk_delete' && !empty($_POST['car_ids'])) {
         $carIds = $_POST['car_ids'];
         $placeholders = implode(',', array_fill(0, count($carIds), '?'));
@@ -32,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "<script>location.replace('mypage.php');</script>";
         exit;
     }
-    // 2-2. 단일(개별) 삭제
+
     if (isset($_POST['action']) && $_POST['action'] === 'single_delete' && !empty($_POST['car_id'])) {
         $delStmt = $pdo->prepare("DELETE FROM wishlist WHERE user_id = ? AND car_id = ?");
         $delStmt->execute([$userId, $_POST['car_id']]);
@@ -40,13 +35,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "<script>location.replace('mypage.php');</script>";
         exit;
     }
-    // 회원 탈퇴 처리
+
     if (isset($_POST['action']) && $_POST['action'] === 'withdraw') {
-        // 찜 목록(wishlist) 데이터 먼저 삭제 후, 유저 데이터 삭제 (외래키 제약 조건 방지)
         $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$userId]);
         $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$userId]);
         
-        // 세션(로그인 상태) 파기
         session_destroy();
         
         echo "<script>alert('회원 탈퇴가 완료되었습니다. 그동안 CarDex를 이용해 주셔서 감사합니다.'); location.replace('index.php');</script>";
@@ -54,7 +47,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 3. 내 차고 통계 데이터 가져오기
 $stats = [
     'total' => 0,
     'top_brand' => '-',
@@ -70,18 +62,21 @@ if ($stats['total'] > 0) {
     $brandStmt = $pdo->prepare("SELECT c.make, COUNT(*) as cnt FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? GROUP BY c.make ORDER BY cnt DESC LIMIT 1");
     $brandStmt->execute([$userId]);
     $brandRes = $brandStmt->fetch();
-    if ($brandRes) $stats['top_brand'] = ucfirst($brandRes['make']);
+    
+    if ($brandRes) {
+        $stats['top_brand'] = ucfirst($brandRes['make']);
+    }
 
     $fuelStmt = $pdo->prepare("SELECT c.fuel_type, COUNT(*) as cnt FROM wishlist w JOIN cars c ON w.car_id = c.car_id WHERE w.user_id = ? GROUP BY c.fuel_type ORDER BY cnt DESC LIMIT 1");
     $fuelStmt->execute([$userId]);
     $fuelRes = $fuelStmt->fetch();
+    
     if ($fuelRes) {
         $stats['top_fuel'] = ucfirst($fuelRes['fuel_type'] ?: 'Unknown');
         $stats['top_fuel_percent'] = round(($fuelRes['cnt'] / $stats['total']) * 100);
     }
 }
 
-// 4. 정렬 방식 파라미터 받기 및 SQL 조건 동적 변경
 $currentSort = $_GET['sort'] ?? 'recent';
 
 $orderBySql = "ORDER BY w.created_at DESC"; 
@@ -98,94 +93,379 @@ $savedCars = $listStmt->fetchAll();
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <!-- 💡 [추가됨] 모바일 기기에서 화면 비율을 맞추기 위한 필수 뷰포트 태그 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CarDex - 마이페이지</title>
     <style>
-        /* 💡 [추가됨] 모든 요소가 화면을 뚫고 나가지 않도록 방어 */
-        * { box-sizing: border-box; }
+        * { 
+            box-sizing: border-box; 
+        }
         
-        body { background-color: #121212; color: #fff; font-family: 'Noto Sans KR', sans-serif; margin: 0; min-width: 320px; overflow-x: hidden; }
-        a { text-decoration: none; color: inherit; }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; width: 100%; }
+        body { 
+            background-color: #121212; 
+            color: #fff; 
+            font-family: 'Noto Sans KR', sans-serif; 
+            margin: 0; 
+            min-width: 320px; 
+            overflow-x: hidden; 
+        }
 
-        .page-title-wrap { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
-        .page-title h1 { font-size: 2rem; font-weight: 800; margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px; }
-        .page-title p { color: #a0a0a0; margin: 0; font-size: 0.95rem; }
+        a { 
+            text-decoration: none; 
+            color: inherit; 
+        }
 
-        /* 통계 위젯 영역 */
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }
-        .stat-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 12px; padding: 25px; display: flex; flex-direction: column; justify-content: center; }
-        .stat-card span { font-size: 0.8rem; color: #888; margin-bottom: 10px; }
-        .stat-card strong { font-size: 1.8rem; font-weight: 800; }
-        .stat-card strong.cyan { color: #00e5ff; }
-        .stat-card small { font-size: 1rem; color: #666; font-weight: normal; margin-left: 5px; }
-        
-        .link-card { background: rgba(0, 229, 255, 0.05); border: 1px solid rgba(0, 229, 255, 0.2); cursor: pointer; transition: 0.2s; align-items: center; text-align: center; }
-        .link-card:hover { background: rgba(0, 229, 255, 0.1); transform: translateY(-3px); }
-        .link-card strong { font-size: 1.2rem; color: #00e5ff; }
+        .container { 
+            max-width: 1200px; 
+            margin: 40px auto; 
+            padding: 0 20px; 
+            width: 100%; 
+        }
 
-        /* 컨트롤 툴바 */
-        .toolbar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 25px; }
-        .toolbar-left { display: flex; align-items: center; gap: 15px; }
-        .checkbox-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #ccc; cursor: pointer; }
-        .checkbox-wrap input { width: 16px; height: 16px; cursor: pointer; accent-color: #00e5ff; }
-        
-        .btn-delete-selected { background: #ff4b4b; color: #fff; border: none; padding: 6px 15px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; cursor: pointer; display: none; transition: 0.2s; }
-        .btn-delete-selected:hover { background: #ff3333; }
+        .page-title-wrap { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: flex-start; 
+            margin-bottom: 40px; 
+        }
 
-        .sort-select { background: #1e1e24; color: #fff; border: 1px solid #333; padding: 6px 12px; border-radius: 6px; outline: none; cursor: pointer; font-size: 0.85rem; }
+        .page-title h1 { 
+            font-size: 2rem; 
+            font-weight: 800; 
+            margin: 0 0 10px 0; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+        }
 
-        /* 차량 카드 그리드 */
-        .car-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 60px; }
-        .car-card { background: #1e1e24; border: 1px solid #2a2a2f; border-radius: 16px; padding: 25px; position: relative; transition: 0.2s; text-align: center; display: flex; flex-direction: column; }
-        .car-card:hover { border-color: #555; }
-        
-        .card-top { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .card-top input { width: 16px; height: 16px; cursor: pointer; accent-color: #00e5ff; }
-        .btn-trash { background: none; border: none; color: #666; cursor: pointer; font-size: 1.1rem; transition: 0.2s; padding: 0; }
-        .btn-trash:hover { color: #ff4b4b; }
+        .page-title p { 
+            color: #a0a0a0; 
+            margin: 0; 
+            font-size: 0.95rem; 
+        }
 
-        .car-icon-circle { width: 60px; height: 60px; background: #121212; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin: 0 auto 15px auto; border: 1px solid #333; font-size: 1.5rem; }
-        
-        .c-year { font-size: 0.75rem; background: rgba(255,255,255,0.05); padding: 3px 8px; border-radius: 10px; color: #ccc; display: inline-block; margin-bottom: 10px; border: 1px solid #333; }
-        .c-brand { font-size: 0.85rem; color: #00e5ff; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; }
-        .c-model { font-size: 1.4rem; font-weight: 800; margin-bottom: 20px; text-transform: capitalize; }
-        
-        .tags { display: flex; justify-content: center; gap: 8px; margin-bottom: 25px; }
-        .tag { background: #121212; border: 1px solid #333; padding: 5px 12px; border-radius: 12px; font-size: 0.75rem; color: #888; text-transform: capitalize; }
-        
-        .c-class { font-size: 0.8rem; color: #666; margin-top: auto; border-top: 1px solid #333; padding-top: 15px; }
-        .c-class span { color: #dda0dd; margin-right: 5px; }
-        
-        .empty-state { grid-column: 1/-1; text-align: center; padding: 80px 20px; background: #1e1e24; border-radius: 16px; border: 1px dashed #333; color: #888; }
-        
-        /* 회원 탈퇴 버튼 스타일 */
-        .btn-withdraw { background: rgba(255, 75, 75, 0.05); border: 1px solid rgba(255, 75, 75, 0.2); color: #ff4b4b; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
-        .btn-withdraw:hover { background: rgba(255, 75, 75, 0.15); }
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 20px; 
+            margin-bottom: 40px; 
+        }
 
-        /* 💡 [추가됨] 모바일(768px 이하) 전용 반응형 CSS */
+        .stat-card { 
+            background: #1e1e24; 
+            border: 1px solid #2a2a2f; 
+            border-radius: 12px; 
+            padding: 25px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+        }
+
+        .stat-card span { 
+            font-size: 0.8rem; 
+            color: #888; 
+            margin-bottom: 10px; 
+        }
+
+        .stat-card strong { 
+            font-size: 1.8rem; 
+            font-weight: 800; 
+        }
+
+        .stat-card strong.cyan { 
+            color: #00e5ff; 
+        }
+
+        .stat-card small { 
+            font-size: 1rem; 
+            color: #666; 
+            font-weight: normal; 
+            margin-left: 5px; 
+        }
+        
+        .link-card { 
+            background: rgba(0, 229, 255, 0.05); 
+            border: 1px solid rgba(0, 229, 255, 0.2); 
+            cursor: pointer; 
+            transition: 0.2s; 
+            align-items: center; 
+            text-align: center; 
+        }
+
+        .link-card:hover { 
+            background: rgba(0, 229, 255, 0.1); 
+            transform: translateY(-3px); 
+        }
+
+        .link-card strong { 
+            font-size: 1.2rem; 
+            color: #00e5ff; 
+        }
+
+        .toolbar { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 15px; 
+            margin-bottom: 25px; 
+        }
+
+        .toolbar-left { 
+            display: flex; 
+            align-items: center; 
+            gap: 15px; 
+        }
+
+        .checkbox-wrap { 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            font-size: 0.9rem; 
+            color: #ccc; 
+            cursor: pointer; 
+        }
+
+        .checkbox-wrap input { 
+            width: 16px; 
+            height: 16px; 
+            cursor: pointer; 
+            accent-color: #00e5ff; 
+        }
+        
+        .btn-delete-selected { 
+            background: #ff4b4b; 
+            color: #fff; 
+            border: none; 
+            padding: 6px 15px; 
+            border-radius: 6px; 
+            font-size: 0.8rem; 
+            font-weight: bold; 
+            cursor: pointer; 
+            display: none; 
+            transition: 0.2s; 
+        }
+
+        .btn-delete-selected:hover { 
+            background: #ff3333; 
+        }
+
+        .sort-select { 
+            background: #1e1e24; 
+            color: #fff; 
+            border: 1px solid #333; 
+            padding: 6px 12px; 
+            border-radius: 6px; 
+            outline: none; 
+            cursor: pointer; 
+            font-size: 0.85rem; 
+        }
+
+        .car-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
+            gap: 20px; 
+            margin-bottom: 60px; 
+        }
+
+        .car-card { 
+            background: #1e1e24; 
+            border: 1px solid #2a2a2f; 
+            border-radius: 16px; 
+            padding: 25px; 
+            position: relative; 
+            transition: 0.2s; 
+            text-align: center; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        .car-card:hover { 
+            border-color: #555; 
+        }
+        
+        .card-top { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 20px; 
+        }
+
+        .card-top input { 
+            width: 16px; 
+            height: 16px; 
+            cursor: pointer; 
+            accent-color: #00e5ff; 
+        }
+
+        .btn-trash { 
+            background: none; 
+            border: none; 
+            color: #666; 
+            cursor: pointer; 
+            font-size: 1.1rem; 
+            transition: 0.2s; 
+            padding: 0; 
+        }
+
+        .btn-trash:hover { 
+            color: #ff4b4b; 
+        }
+
+        .car-icon-circle { 
+            width: 60px; 
+            height: 60px; 
+            background: #121212; 
+            border-radius: 50%; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            margin: 0 auto 15px auto; 
+            border: 1px solid #333; 
+            font-size: 1.5rem; 
+        }
+        
+        .c-year { 
+            font-size: 0.75rem; 
+            background: rgba(255,255,255,0.05); 
+            padding: 3px 8px; 
+            border-radius: 10px; 
+            color: #ccc; 
+            display: inline-block; 
+            margin-bottom: 10px; 
+            border: 1px solid #333; 
+        }
+
+        .c-brand { 
+            font-size: 0.85rem; 
+            color: #00e5ff; 
+            font-weight: 800; 
+            text-transform: uppercase; 
+            margin-bottom: 5px; 
+        }
+
+        .c-model { 
+            font-size: 1.4rem; 
+            font-weight: 800; 
+            margin-bottom: 20px; 
+            text-transform: capitalize; 
+        }
+        
+        .tags { 
+            display: flex; 
+            justify-content: center; 
+            gap: 8px; 
+            margin-bottom: 25px; 
+        }
+
+        .tag { 
+            background: #121212; 
+            border: 1px solid #333; 
+            padding: 5px 12px; 
+            border-radius: 12px; 
+            font-size: 0.75rem; 
+            color: #888; 
+            text-transform: capitalize; 
+        }
+        
+        .c-class { 
+            font-size: 0.8rem; 
+            color: #666; 
+            margin-top: auto; 
+            border-top: 1px solid #333; 
+            padding-top: 15px; 
+        }
+
+        .c-class span { 
+            color: #dda0dd; 
+            margin-right: 5px; 
+        }
+        
+        .empty-state { 
+            grid-column: 1/-1; 
+            text-align: center; 
+            padding: 80px 20px; 
+            background: #1e1e24; 
+            border-radius: 16px; 
+            border: 1px dashed #333; 
+            color: #888; 
+        }
+        
+        .btn-withdraw { 
+            background: rgba(255, 75, 75, 0.05); 
+            border: 1px solid rgba(255, 75, 75, 0.2); 
+            color: #ff4b4b; 
+            padding: 10px 20px; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            font-size: 0.9rem; 
+            cursor: pointer; 
+            transition: 0.2s; 
+        }
+
+        .btn-withdraw:hover { 
+            background: rgba(255, 75, 75, 0.15); 
+        }
+
         @media (max-width: 768px) {
-            .container { margin: 20px auto; padding: 0 15px; }
+            .container { 
+                margin: 20px auto; 
+                padding: 0 15px; 
+            }
             
-            /* 타이틀 영역 세로 정렬 및 버튼 풀사이즈 */
-            .page-title-wrap { flex-direction: column; align-items: flex-start; gap: 20px; }
-            .page-title-wrap > a, .page-title-wrap > form { width: 100%; }
-            .btn-withdraw { width: 100%; text-align: center; padding: 15px; font-size: 1rem; }
+            .page-title-wrap { 
+                flex-direction: column; 
+                align-items: flex-start; 
+                gap: 20px; 
+            }
 
-            /* 통계 위젯을 2x2 바둑판으로 변경 */
-            .stats-grid { grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
-            .stat-card { padding: 20px 15px; }
-            .stat-card strong { font-size: 1.4rem; }
-            .link-card strong { font-size: 1rem; }
+            .page-title-wrap > a, .page-title-wrap > form { 
+                width: 100%; 
+            }
 
-            /* 툴바 세로 정렬 및 꽉 채우기 */
-            .toolbar { flex-direction: column; align-items: flex-start; gap: 15px; }
-            .toolbar-left { width: 100%; justify-content: space-between; }
-            .sort-select { width: 100%; padding: 12px; }
+            .btn-withdraw { 
+                width: 100%; 
+                text-align: center; 
+                padding: 15px; 
+                font-size: 1rem; 
+            }
 
-            /* 차량 카드 1열 정렬 보장 */
-            .car-grid { grid-template-columns: 1fr; gap: 15px; }
+            .stats-grid { 
+                grid-template-columns: 1fr 1fr; 
+                gap: 15px; 
+                margin-bottom: 30px; 
+            }
+
+            .stat-card { 
+                padding: 20px 15px; 
+            }
+
+            .stat-card strong { 
+                font-size: 1.4rem; 
+            }
+
+            .link-card strong { 
+                font-size: 1rem; 
+            }
+
+            .toolbar { 
+                flex-direction: column; 
+                align-items: flex-start; 
+                gap: 15px; 
+            }
+
+            .toolbar-left { 
+                width: 100%; 
+                justify-content: space-between; 
+            }
+
+            .sort-select { 
+                width: 100%; 
+                padding: 12px; 
+            }
+
+            .car-grid { 
+                grid-template-columns: 1fr; 
+                gap: 15px; 
+            }
         }
     </style>
 </head>
@@ -196,14 +476,13 @@ $savedCars = $listStmt->fetchAll();
 <div class="container">
     <div class="page-title-wrap">
         <div class="page-title">
-            <h1>내 차고 🚘</h1>
+            <h1>내 차고</h1>
             <p>관심 있는 차량을 모아보고, 통계를 확인하세요.</p>
         </div>
         
-        <!-- 권한에 따른 분기 처리 -->
         <?php if ($role === 'admin'): ?>
             <a href="admin.php" style="background: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.3); color: #ff4b4b; padding: 12px 24px; border-radius: 8px; font-weight: 800; font-size: 0.95rem; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='#ff4b4b'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255, 75, 75, 0.1)'; this.style.color='#ff4b4b';">
-                👑 관리자 센터 접속
+                관리자 센터 접속
             </a>
         <?php else: ?>
             <form method="POST" style="margin: 0;" onsubmit="return confirm('정말 회원 탈퇴를 진행하시겠습니까?\n저장된 차고 데이터가 모두 삭제되며 복구할 수 없습니다.');">
@@ -215,7 +494,6 @@ $savedCars = $listStmt->fetchAll();
         <?php endif; ?>
     </div>
 
-    <!-- 통계 위젯 -->
     <div class="stats-grid">
         <div class="stat-card">
             <span>저장된 차량</span>
@@ -234,7 +512,6 @@ $savedCars = $listStmt->fetchAll();
         </a>
     </div>
 
-    <!-- 차량 데이터 폼 시작 -->
     <form id="garageForm" method="POST" action="mypage.php">
         <input type="hidden" name="action" id="formAction" value="">
         <input type="hidden" name="car_id" id="singleDeleteId" value="">
