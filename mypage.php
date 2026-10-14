@@ -16,7 +16,8 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action']) && $_POST['action'] === 'bulk_delete' && !empty($_POST['car_ids'])) {
+    // is_array 검증 추가로 PHP 에러 방지
+    if (isset($_POST['action']) && $_POST['action'] === 'bulk_delete' && !empty($_POST['car_ids']) && is_array($_POST['car_ids'])) {
         $carIds = $_POST['car_ids'];
         $placeholders = implode(',', array_fill(0, count($carIds), '?'));
         $params = array_merge([$userId], $carIds);
@@ -37,13 +38,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (isset($_POST['action']) && $_POST['action'] === 'withdraw') {
-        $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$userId]);
-        $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$userId]);
-        
-        session_destroy();
-        
-        echo "<script>alert('회원 탈퇴가 완료되었습니다. 그동안 CarDex를 이용해 주셔서 감사합니다.'); location.replace('index.php');</script>";
-        exit;
+        try {
+            // 트랜잭션 시작 (원자성 보장)
+            $pdo->beginTransaction();
+            $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$userId]);
+            $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$userId]);
+            $pdo->commit();
+            
+            // 완벽한 세션 및 쿠키 파기
+            $_SESSION = [];
+            if (ini_get("session.use_cookies")) {
+                $params = session_get_cookie_params();
+                setcookie(session_name(), '', time() - 42000,
+                    $params["path"], $params["domain"],
+                    $params["secure"], $params["httponly"]
+                );
+            }
+            session_destroy();
+            
+            echo "<script>alert('회원 탈퇴가 완료되었습니다. 그동안 CarDex를 이용해 주셔서 감사합니다.'); location.replace('index.php');</script>";
+            exit;
+        } catch (PDOException $e) {
+            $pdo->rollBack();
+            error_log("Withdraw Error: " . $e->getMessage());
+            echo "<script>alert('탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'); location.replace('mypage.php');</script>";
+            exit;
+        }
     }
 }
 

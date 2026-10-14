@@ -17,31 +17,51 @@ if (!$currentUser || $currentUser['role'] !== 'admin') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $targetUserId = $_POST['target_user_id'] ?? '';
+    
+    // 허용된 액션만 배열로 정의하여 검증 (XSS 및 임의 값 주입 방지)
+    $allowedActions = ['promote', 'demote', 'delete'];
 
-    if ($targetUserId) {
+    if ($targetUserId && in_array($action, $allowedActions)) {
         if ($targetUserId == $_SESSION['user_id']) {
             echo "<script>alert('최고 관리자(본인) 계정은 변경하거나 삭제할 수 없습니다.'); location.replace('admin.php');</script>";
             exit;
         }
 
-        if ($action === 'promote') {
-            $updateStmt = $pdo->prepare("UPDATE users SET role = 'admin' WHERE user_id = ?");
-            $updateStmt->execute([$targetUserId]);
-            echo "<script>alert('해당 유저를 관리자로 승격했습니다.'); location.replace('admin.php');</script>";
-            exit;
-            
-        } elseif ($action === 'demote') {
-            $updateStmt = $pdo->prepare("UPDATE users SET role = 'user' WHERE user_id = ?");
-            $updateStmt->execute([$targetUserId]);
-            echo "<script>alert('해당 유저의 관리자 권한을 회수했습니다.'); location.replace('admin.php');</script>";
-            exit;
-            
-        } elseif ($action === 'delete') {
-            $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$targetUserId]);
-            $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$targetUserId]);
-            echo "<script>alert('해당 회원을 강제 탈퇴 처리했습니다.'); location.replace('admin.php');</script>";
+        try {
+            if ($action === 'promote') {
+                $updateStmt = $pdo->prepare("UPDATE users SET role = 'admin' WHERE user_id = ?");
+                $updateStmt->execute([$targetUserId]);
+                echo "<script>alert('해당 유저를 관리자로 승격했습니다.'); location.replace('admin.php');</script>";
+                exit;
+                
+            } elseif ($action === 'demote') {
+                $updateStmt = $pdo->prepare("UPDATE users SET role = 'user' WHERE user_id = ?");
+                $updateStmt->execute([$targetUserId]);
+                echo "<script>alert('해당 유저의 관리자 권한을 회수했습니다.'); location.replace('admin.php');</script>";
+                exit;
+                
+            } elseif ($action === 'delete') {
+                // 여러 테이블의 데이터를 삭제할 때 하나라도 실패하면 롤백되도록 트랜잭션 처리
+                $pdo->beginTransaction();
+                $pdo->prepare("DELETE FROM wishlist WHERE user_id = ?")->execute([$targetUserId]);
+                $pdo->prepare("DELETE FROM users WHERE user_id = ?")->execute([$targetUserId]);
+                $pdo->commit();
+                
+                echo "<script>alert('해당 회원을 강제 탈퇴 처리했습니다.'); location.replace('admin.php');</script>";
+                exit;
+            }
+        } catch (\PDOException $e) {
+            // 에러 발생 시 트랜잭션 롤백 및 로깅 후 안전한 에러 메시지 출력
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log("Admin action error: " . $e->getMessage());
+            echo "<script>alert('작업 처리 중 오류가 발생했습니다. 다시 시도해주세요.'); location.replace('admin.php');</script>";
             exit;
         }
+    } elseif ($targetUserId) {
+        echo "<script>alert('잘못된 요청입니다.'); location.replace('admin.php');</script>";
+        exit;
     }
 }
 

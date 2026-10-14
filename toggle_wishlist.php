@@ -54,9 +54,10 @@ try {
         ]);
     }
 } catch (\PDOException $e) {
+    error_log("Wishlist Toggle Error: " . $e->getMessage());
     echo json_encode([
         'status'  => 'error', 
-        'message' => $e->getMessage()
+        'message' => '서버 처리 중 오류가 발생했습니다.'
     ]);
 }
 ?>

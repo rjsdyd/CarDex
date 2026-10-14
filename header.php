@@ -1,5 +1,5 @@
 <?php
-$current_page = basename($_SERVER['PHP_SELF']);
+$current_page = basename($_SERVER['SCRIPT_NAME']);
 ?>
 <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');

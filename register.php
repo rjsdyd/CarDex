@@ -27,7 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $insertStmt->execute(['username' => $username, 'password' => $hashed_password]);
                 $success = '회원가입이 완료되었습니다! 아래 버튼을 눌러 로그인해주세요.';
             } catch (\PDOException $e) {
-                $error = '회원가입 중 오류가 발생했습니다: ' . $e->getMessage();
+                error_log("Registration Error: " . $e->getMessage());
+                $error = '회원가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
             }
         }
     }

@@ -5,14 +5,14 @@ require_once 'db.php';
 $countStmt = $pdo->query("SELECT COUNT(*) FROM cars");
 $totalRows = number_format($countStmt->fetchColumn());
 
-$currentCountry = $_GET['country'] ?? 'ALL'; 
+$currentCountry    = $_GET['country'] ?? 'ALL'; 
 $currentPowertrain = $_GET['powertrain'] ?? 'all';
-$currentBodyStyle = $_GET['body_style'] ?? 'all'; 
-$currentBrand = $_GET['brand'] ?? ''; 
-$currentSort = $_GET['sort'] ?? 'popular';
+$currentBodyStyle  = $_GET['body_style'] ?? 'all'; 
+$currentBrand      = $_GET['brand'] ?? ''; 
+$currentSort       = $_GET['sort'] ?? 'popular';
 
 $brandParam = $currentBrand ? '&brand=' . urlencode($currentBrand) : '';
-$sortParam = '&sort=' . urlencode($currentSort);
+$sortParam  = '&sort=' . urlencode($currentSort);
 
 $countryBrands = [
     'ALL' => [], 
@@ -37,47 +37,74 @@ $displayBrands = $currentCountry === 'ALL'
 
 $categoryCars = [];
 
-$powertrainSql = "";
+$sqlConditions = [];
+$sqlParams     = [];
 
 if ($currentPowertrain === 'electric') {
-    $powertrainSql = " AND LOWER(fuel_type) = 'electricity'";
+    $sqlConditions[] = "LOWER(fuel_type) = ?";
+    $sqlParams[]     = 'electricity';
 } elseif ($currentPowertrain === 'hybrid') {
-    $powertrainSql = " AND LOWER(fuel_type) LIKE '%hybrid%'";
+    $sqlConditions[] = "LOWER(fuel_type) LIKE ?";
+    $sqlParams[]     = '%hybrid%';
 } elseif ($currentPowertrain === 'combustion') {
-    $powertrainSql = " AND LOWER(fuel_type) != 'electricity' AND LOWER(fuel_type) NOT LIKE '%hybrid%'";
+    $sqlConditions[] = "LOWER(fuel_type) != ? AND LOWER(fuel_type) NOT LIKE ?";
+    $sqlParams[]     = 'electricity';
+    $sqlParams[]     = '%hybrid%';
 }
-
-$bodyStyleSql = "";
 
 if ($currentBodyStyle === 'suv') {
-    $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%sport utility%' OR LOWER(vehicle_class) LIKE '%suv%')";
+    $sqlConditions[] = "(LOWER(vehicle_class) LIKE ? OR LOWER(vehicle_class) LIKE ?)";
+    $sqlParams[]     = '%sport utility%';
+    $sqlParams[]     = '%suv%';
 } elseif ($currentBodyStyle === 'sedan') {
-    $bodyStyleSql = " AND LOWER(vehicle_class) LIKE '%car%' AND LOWER(vehicle_class) NOT LIKE '%sport utility%'";
+    $sqlConditions[] = "LOWER(vehicle_class) LIKE ? AND LOWER(vehicle_class) NOT LIKE ?";
+    $sqlParams[]     = '%car%';
+    $sqlParams[]     = '%sport utility%';
 } elseif ($currentBodyStyle === 'sports') {
-    $bodyStyleSql = " AND (LOWER(vehicle_class) LIKE '%two seater%' OR LOWER(vehicle_class) LIKE '%sports%')";
+    $sqlConditions[] = "(LOWER(vehicle_class) LIKE ? OR LOWER(vehicle_class) LIKE ?)";
+    $sqlParams[]     = '%two seater%';
+    $sqlParams[]     = '%sports%';
 }
 
-$orderBySql = " ORDER BY created_at DESC";
+$orderBySql = "ORDER BY created_at DESC";
 
 if ($currentSort === 'newest') {
-    $orderBySql = " ORDER BY year DESC, created_at DESC";
+    $orderBySql = "ORDER BY year DESC, created_at DESC";
 }
 
 if ($currentBrand) {
-    $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(make) = ? $powertrainSql $bodyStyleSql $orderBySql");
-    $stmt->execute([strtolower($currentBrand)]);
+    $sqlConditions[] = "LOWER(make) = ?";
+    $sqlParams[]     = strtolower($currentBrand);
+    
+    $whereClause = !empty($sqlConditions) ? "WHERE " . implode(" AND ", $sqlConditions) : "";
+    
+    $stmt = $pdo->prepare("SELECT * FROM cars $whereClause $orderBySql");
+    $stmt->execute($sqlParams);
+    
     $categoryCars = $stmt->fetchAll();
     $sectionTitle = ucfirst($currentBrand) . " 탐색";
 } else {
     if ($currentCountry === 'ALL') {
-        $stmt = $pdo->prepare("SELECT * FROM cars WHERE 1=1 $powertrainSql $bodyStyleSql $orderBySql");
-        $stmt->execute();
+        $whereClause = !empty($sqlConditions) ? "WHERE " . implode(" AND ", $sqlConditions) : "";
+        
+        $stmt = $pdo->prepare("SELECT * FROM cars $whereClause $orderBySql");
+        $stmt->execute($sqlParams);
+        
         $categoryCars = $stmt->fetchAll();
     } else {
         if (!empty($targetBrands)) {
             $placeholders = implode(',', array_fill(0, count($targetBrands), '?'));
-            $stmt = $pdo->prepare("SELECT * FROM cars WHERE LOWER(make) IN ($placeholders) $powertrainSql $bodyStyleSql $orderBySql");
-            $stmt->execute($targetBrands);
+            $sqlConditions[] = "LOWER(make) IN ($placeholders)";
+            
+            foreach ($targetBrands as $brand) {
+                $sqlParams[] = strtolower($brand);
+            }
+            
+            $whereClause = !empty($sqlConditions) ? "WHERE " . implode(" AND ", $sqlConditions) : "";
+            
+            $stmt = $pdo->prepare("SELECT * FROM cars $whereClause $orderBySql");
+            $stmt->execute($sqlParams);
+            
             $categoryCars = $stmt->fetchAll();
         }
     }

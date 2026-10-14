@@ -32,17 +32,23 @@ try {
             $response = curl_exec($ch);
             
             if ($response === false) { 
-                die("🚨 서버 통신 에러: " . curl_error($ch)); 
+                error_log("API Curl Error: " . curl_error($ch));
+                die("
+                    <div style='background:#111; color:#fff; padding:30px; text-align:center;'>
+                        <h2>🚨 서버 통신 에러</h2>
+                        <p>현재 차량 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.</p>
+                    </div>
+                ");
             }
             curl_close($ch);
 
             $apiCars = json_decode($response, true);
             
             if (isset($apiCars['error']) || isset($apiCars['message'])) {
-                die("
+                 die("
                     <div style='background:#111; color:#fff; padding:30px; text-align:center;'>
                         <h2>🚨 API 에러</h2>
-                        <code>" . htmlspecialchars($response) . "</code>
+                        <p>API 응답에 문제가 발생했습니다.</p>
                     </div>
                 ");
             }
@@ -82,7 +88,8 @@ try {
         }
     }
 } catch (\PDOException $e) {
-    die("데이터베이스 에러: " . $e->getMessage());
+    error_log("Database Error in index.php: " . $e->getMessage());
+    die("데이터베이스 에러가 발생했습니다.");
 }
 
 $popStmt = $pdo->query("SELECT * FROM cars ORDER BY created_at DESC LIMIT 1");

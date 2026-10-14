@@ -1,6 +1,20 @@
 <?php
-set_time_limit(0);
+session_start();
 require_once 'db.php';
+
+if (!isset($_SESSION['user_id'])) {
+    die("<script>alert('로그인이 필요한 서비스입니다.'); location.href='login.php';</script>");
+}
+
+$authStmt = $pdo->prepare("SELECT role FROM users WHERE user_id = ?");
+$authStmt->execute([$_SESSION['user_id']]);
+$currentUser = $authStmt->fetch();
+
+if (!$currentUser || $currentUser['role'] !== 'admin') {
+    die("<script>alert('접근 권한이 없습니다. (관리자 전용)'); history.back();</script>");
+}
+
+set_time_limit(0);
 
 $carList = [
     ['make' => 'hyundai', 'model' => 'sonata'],
