@@ -110,3 +110,8 @@
   <img width="209" height="813" alt="image" src="https://github.com/user-attachments/assets/63beb6f4-315d-4613-b3e1-4a451f658762" />
   <img width="204" height="809" alt="image" src="https://github.com/user-attachments/assets/b38e08ae-2f1c-45b2-9a12-1d32336d2777" />
 </div>
+
+## ERD
+<div align="center">
+  <img width="1011" height="474" alt="image" src="https://github.com/user-attachments/assets/2a335cf5-67c6-404a-9d36-403efc91ab1d" />
+</div>
