@@ -56,6 +56,7 @@
 ## 📸 메인 페이지 (검색 및 대시보드)
 <div align="center">
   <img width="1904" height="909" alt="메인 검색" src="https://github.com/user-attachments/assets/37b4f023-e981-4788-b5ad-9c4ac1ea0059" />
+  <img width="148" height="644" alt="메인 검색 모바일" src="https://github.com/user-attachments/assets/14dbfb46-ca6f-4efa-bb38-adfecc2180e8" />
 </div>
 
 ## 📸 카테고리 탐색
