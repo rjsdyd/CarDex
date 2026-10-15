@@ -55,7 +55,8 @@
 
 ## 📸 메인 페이지 (검색 및 대시보드)
 <div align="center">
-  <img width="1904" height="909" alt="메인 검색" src="[여기에_이미지_링크_삽입]" />
+  <img width="1904" height="909" alt="메인 검색" src="<img width="1904" height="910" alt="image" src="https://github.com/user-attachments/assets/37b4f023-e981-4788-b5ad-9c4ac1ea0059" />
+" />
 </div>
 
 ## 📸 카테고리 탐색
